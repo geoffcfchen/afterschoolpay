@@ -46,6 +46,11 @@ For Google sign in, set a support email and confirm these authorized domains:
 - `www.afterschoolpay.com`
 - `afterschoolpay.firebaseapp.com`
 
+The login modal uses the same identifier-first provider detection flow as
+Vetcation. For this to work, Firebase must return sign-in methods from
+`fetchSignInMethodsForEmail`, so Email enumeration protection must be disabled
+in Firebase Authentication settings.
+
 ## GitHub Pages Deploy
 
 The workflow at `.github/workflows/deploy.yml` builds and deploys the site when

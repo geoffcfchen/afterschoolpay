@@ -1,5 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { onAuthStateChanged, signOut } from "firebase/auth";
+import { addDoc, collection, serverTimestamp } from "firebase/firestore/lite";
+import { Link, Route, Routes } from "react-router-dom";
 import heroImage from "./assets/afterschoolpay-hero.png";
+import LoginModal from "./components/LoginModal";
+import EmailRegisterPage from "./pages/EmailRegisterPage";
+import LoginPage from "./pages/LoginPage";
+import { auth, firestore } from "./lib/firebase";
 import "./App.css";
 
 const benefits = [
@@ -24,7 +31,9 @@ const workflows = [
   "Export clean records for accounting and subsidy reporting.",
 ];
 
-function App() {
+function LandingPage() {
+  const [showLogin, setShowLogin] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -32,6 +41,26 @@ function App() {
   });
   const [status, setStatus] = useState("idle");
   const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    if (!auth) {
+      return undefined;
+    }
+
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+    });
+
+    return unsubscribe;
+  }, []);
+
+  const handleSignOut = async () => {
+    if (!auth) {
+      return;
+    }
+
+    await signOut(auth);
+  };
 
   const handleChange = (event) => {
     const { name, value } = event.target;
@@ -54,12 +83,6 @@ function App() {
     setMessage("");
 
     try {
-      const [{ addDoc, collection, serverTimestamp }, { firestore }] =
-        await Promise.all([
-          import("firebase/firestore/lite"),
-          import("./lib/firebase"),
-        ]);
-
       await addDoc(collection(firestore, "earlyAccessLeads"), {
         name: formData.name.trim(),
         email: formData.email.trim().toLowerCase(),
@@ -94,26 +117,43 @@ function App() {
         />
         <div className="hero-shade" />
         <header className="site-header" aria-label="Primary navigation">
-          <a className="brand" href="#top" aria-label="Afterschool Pay home">
+          <Link className="brand" to="/" aria-label="Afterschool Pay home">
             <span className="brand-mark" aria-hidden="true">
               AP
             </span>
             <span>Afterschool Pay</span>
-          </a>
+          </Link>
           <nav className="nav-links" aria-label="Page sections">
             <a href="#platform">Platform</a>
             <a href="#workflow">Workflow</a>
             <a href="#early-access">Early access</a>
           </nav>
+          <div className="site-header-actions">
+            {currentUser ? (
+              <div className="user-chip">
+                <span>{currentUser.email || "Signed in"}</span>
+                <button type="button" onClick={handleSignOut}>
+                  Log out
+                </button>
+              </div>
+            ) : (
+              <button
+                className="nav-login-button"
+                onClick={() => setShowLogin(true)}
+                type="button"
+              >
+                Log in
+              </button>
+            )}
+          </div>
         </header>
 
         <div className="hero-content" id="top">
           <p className="eyebrow">Payments and balances for enrichment teams</p>
           <h1 id="hero-title">Afterschool Pay</h1>
           <p className="hero-copy">
-            A calm payment layer for after-school programs, summer camps, and
-            enrichment providers that need parent payments, balances, and weekly
-            reconciliation to stay in sync.
+            測試, summer camps, and enrichment providers that need parent
+            payments, balances, and weekly reconciliation to stay in sync.
           </p>
           <div className="hero-actions" aria-label="Landing page actions">
             <a className="primary-action" href="#early-access">
@@ -122,6 +162,15 @@ function App() {
             <a className="secondary-action" href="#workflow">
               See the workflow
             </a>
+            {!currentUser ? (
+              <button
+                className="secondary-action"
+                onClick={() => setShowLogin(true)}
+                type="button"
+              >
+                Log in or sign up
+              </button>
+            ) : null}
           </div>
         </div>
 
@@ -224,7 +273,19 @@ function App() {
         <p>Afterschool Pay</p>
         <a href="mailto:hello@afterschoolpay.com">hello@afterschoolpay.com</a>
       </footer>
+      <LoginModal open={showLogin} onClose={() => setShowLogin(false)} />
     </main>
+  );
+}
+
+function App() {
+  return (
+    <Routes>
+      <Route path="/" element={<LandingPage />} />
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/register-email" element={<EmailRegisterPage />} />
+      <Route path="*" element={<LandingPage />} />
+    </Routes>
   );
 }
 

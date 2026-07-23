@@ -32,6 +32,20 @@ The frontend reads Firebase config from Vite environment variables:
 
 The early-access form writes to Firestore collection `earlyAccessLeads`.
 
+### Authentication
+
+Enable these sign-in providers in Firebase Authentication:
+
+- Email/Password
+- Google
+
+For Google sign in, set a support email and confirm these authorized domains:
+
+- `localhost`
+- `afterschoolpay.com`
+- `www.afterschoolpay.com`
+- `afterschoolpay.firebaseapp.com`
+
 ## GitHub Pages Deploy
 
 The workflow at `.github/workflows/deploy.yml` builds and deploys the site when

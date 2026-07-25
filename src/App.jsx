@@ -4,6 +4,7 @@ import { addDoc, collection, serverTimestamp } from "firebase/firestore/lite";
 import { Link, Route, Routes } from "react-router-dom";
 import heroImage from "./assets/afterschoolpay-hero.png";
 import LoginModal from "./components/LoginModal";
+import DashboardPage from "./pages/DashboardPage";
 import EmailRegisterPage from "./pages/EmailRegisterPage";
 import LoginPage from "./pages/LoginPage";
 import { auth, firestore } from "./lib/firebase";
@@ -132,6 +133,7 @@ function LandingPage() {
             {currentUser ? (
               <div className="user-chip">
                 <span>{currentUser.email || "Signed in"}</span>
+                <Link to="/dashboard">Dashboard</Link>
                 <button type="button" onClick={handleSignOut}>
                   Log out
                 </button>
@@ -152,8 +154,9 @@ function LandingPage() {
           <p className="eyebrow">Payments and balances for enrichment teams</p>
           <h1 id="hero-title">Afterschool Pay</h1>
           <p className="hero-copy">
-            測試, summer camps, and enrichment providers that need parent
-            payments, balances, and weekly reconciliation to stay in sync.
+            Afterschool programs, summer camps, and enrichment providers that
+            need parent payments, balances, and weekly reconciliation to stay in
+            sync.
           </p>
           <div className="hero-actions" aria-label="Landing page actions">
             <a className="primary-action" href="#early-access">
@@ -170,7 +173,11 @@ function LandingPage() {
               >
                 Log in or sign up
               </button>
-            ) : null}
+            ) : (
+              <Link className="secondary-action" to="/dashboard">
+                Open dashboard
+              </Link>
+            )}
           </div>
         </div>
 
@@ -282,6 +289,7 @@ function App() {
   return (
     <Routes>
       <Route path="/" element={<LandingPage />} />
+      <Route path="/dashboard" element={<DashboardPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register-email" element={<EmailRegisterPage />} />
       <Route path="*" element={<LandingPage />} />

@@ -46,7 +46,7 @@ function LoginModal({ open, onClose }) {
       }
 
       onClose?.();
-      navigate("/");
+      navigate("/dashboard");
     } catch (error) {
       console.error("Google login failed in modal:", error);
       setEmailError("Google sign in is not ready yet. Check Firebase setup.");

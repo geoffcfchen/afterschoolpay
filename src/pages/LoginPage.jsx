@@ -47,7 +47,7 @@ function LoginPage() {
       const isSuccess = await signIn(email.trim().toLowerCase(), password);
 
       if (isSuccess) {
-        navigate("/");
+        navigate("/dashboard");
         return;
       }
 

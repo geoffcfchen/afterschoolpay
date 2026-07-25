@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { signUp } from "../lib/firebase";
 
 function EmailRegisterPage() {
+  const navigate = useNavigate();
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
   const initialEmail = searchParams.get("email") || "";
@@ -15,7 +16,6 @@ function EmailRegisterPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [errors, setErrors] = useState({});
   const [signupError, setSignupError] = useState("");
-  const [signupSuccess, setSignupSuccess] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const validate = () => {
@@ -45,7 +45,6 @@ function EmailRegisterPage() {
   const handleSubmit = async (event) => {
     event.preventDefault();
     setSignupError("");
-    setSignupSuccess("");
 
     const validationErrors = validate();
     if (Object.keys(validationErrors).length > 0) {
@@ -56,9 +55,7 @@ function EmailRegisterPage() {
     try {
       setSubmitting(true);
       await signUp(email.trim().toLowerCase(), password);
-      setSignupSuccess(
-        "Account created. Please check your inbox for the verification email.",
-      );
+      navigate("/dashboard", { replace: true });
     } catch (error) {
       console.error("Could not create account:", error);
       setSignupError(
@@ -85,9 +82,6 @@ function EmailRegisterPage() {
       <section className="auth-card" aria-labelledby="register-title">
         {signupError ? (
           <div className="auth-banner error">{signupError}</div>
-        ) : null}
-        {signupSuccess ? (
-          <div className="auth-banner success">{signupSuccess}</div>
         ) : null}
 
         <h1 id="register-title">Create your password</h1>

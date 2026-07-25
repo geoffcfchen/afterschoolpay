@@ -1,0 +1,103 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isBootstrapOwner() {
+      return signedIn() && request.auth.token.email == "gcfchen@gmail.com";
+    }
+
+    function isSelf(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    function hasOrgMember(orgId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/organizations/$(orgId)/members/$(request.auth.uid));
+    }
+
+    function currentMember(orgId) {
+      return get(/databases/$(database)/documents/organizations/$(orgId)/members/$(request.auth.uid));
+    }
+
+    function isOrgOwner(orgId) {
+      return hasOrgMember(orgId)
+        && currentMember(orgId).data.status == "active"
+        && currentMember(orgId).data.roleLevel == 1;
+    }
+
+    function isPendingSelfMember(memberId) {
+      return isSelf(memberId)
+        && request.resource.data.role == "pending"
+        && request.resource.data.roleLevel == 4
+        && request.resource.data.status == "pending";
+    }
+
+    function isBootstrapOwnerMember(memberId) {
+      return isSelf(memberId)
+        && isBootstrapOwner()
+        && request.resource.data.role == "owner"
+        && request.resource.data.roleLevel == 1
+        && request.resource.data.status == "active";
+    }
+
+    function updatesOnlyProfileFields() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        "displayName",
+        "email",
+        "photoURL",
+        "updatedAt"
+      ]);
+    }
+
+    match /earlyAccessLeads/{leadId} {
+      allow create: if request.resource.data.keys().hasOnly([
+        "createdAt",
+        "email",
+        "name",
+        "role",
+        "source"
+      ]) && request.resource.data.email is string;
+      allow read, update, delete: if false;
+    }
+
+    match /users/{userId} {
+      allow read, create, update: if isSelf(userId);
+      allow delete: if false;
+    }
+
+    match /organizations/{orgId} {
+      allow read: if hasOrgMember(orgId) || isBootstrapOwner();
+      allow create: if isBootstrapOwner();
+      allow update, delete: if isOrgOwner(orgId) || isBootstrapOwner();
+
+      match /members/{memberId} {
+        allow read: if isSelf(memberId) || hasOrgMember(orgId) || isBootstrapOwner();
+        allow create: if isPendingSelfMember(memberId)
+          || isBootstrapOwnerMember(memberId)
+          || isOrgOwner(orgId);
+        allow update: if isOrgOwner(orgId)
+          || isBootstrapOwner()
+          || (isSelf(memberId) && updatesOnlyProfileFields());
+        allow delete: if isOrgOwner(orgId) || isBootstrapOwner();
+      }
+
+      match /branches/{branchId} {
+        allow read: if hasOrgMember(orgId) || isBootstrapOwner();
+        allow create, update, delete: if isOrgOwner(orgId) || isBootstrapOwner();
+      }
+
+      match /programs/{programId} {
+        allow read: if hasOrgMember(orgId) || isBootstrapOwner();
+        allow create, update, delete: if isOrgOwner(orgId) || isBootstrapOwner();
+      }
+
+      match /{document=**} {
+        allow read, write: if isOrgOwner(orgId) || isBootstrapOwner();
+      }
+    }
+  }
+}

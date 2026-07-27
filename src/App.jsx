@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { addDoc, collection, serverTimestamp } from "firebase/firestore/lite";
 import { Link, Route, Routes } from "react-router-dom";
@@ -9,6 +9,8 @@ import EmailRegisterPage from "./pages/EmailRegisterPage";
 import LoginPage from "./pages/LoginPage";
 import { auth, firestore } from "./lib/firebase";
 import "./App.css";
+
+const StudentsCoursesPage = lazy(() => import("./pages/StudentsCoursesPage"));
 
 const benefits = [
   {
@@ -290,6 +292,25 @@ function App() {
     <Routes>
       <Route path="/" element={<LandingPage />} />
       <Route path="/dashboard" element={<DashboardPage />} />
+      <Route
+        path="/students-courses"
+        element={
+          <Suspense
+            fallback={
+              <main className="dashboard-page">
+                <div className="dashboard-loading">
+                  <span className="brand-mark dark" aria-hidden="true">
+                    AP
+                  </span>
+                  <p>正在載入學生與課程...</p>
+                </div>
+              </main>
+            }
+          >
+            <StudentsCoursesPage />
+          </Suspense>
+        }
+      />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register-email" element={<EmailRegisterPage />} />
       <Route path="*" element={<LandingPage />} />

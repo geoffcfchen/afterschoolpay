@@ -29,6 +29,15 @@ service cloud.firestore {
         && currentMember(orgId).data.roleLevel == 1;
     }
 
+    function canUseStudentWorkspace(orgId) {
+      return hasOrgMember(orgId)
+        && currentMember(orgId).data.status == "active"
+        && (
+          currentMember(orgId).data.roleLevel == 1
+          || currentMember(orgId).data.permissions.canViewStudents == true
+        );
+    }
+
     function isPendingSelfMember(memberId) {
       return isSelf(memberId)
         && request.resource.data.role == "pending"
@@ -93,6 +102,14 @@ service cloud.firestore {
       match /programs/{programId} {
         allow read: if hasOrgMember(orgId) || isBootstrapOwner();
         allow create, update, delete: if isOrgOwner(orgId) || isBootstrapOwner();
+      }
+
+      match /billingWorkspaces/{workspaceId} {
+        allow read, write: if canUseStudentWorkspace(orgId) || isBootstrapOwner();
+
+        match /classes/{classId} {
+          allow read, write: if canUseStudentWorkspace(orgId) || isBootstrapOwner();
+        }
       }
 
       match /{document=**} {

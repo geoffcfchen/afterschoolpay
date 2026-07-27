@@ -13,22 +13,22 @@ export const DEFAULT_ORG_ID = "afterschoolpay";
 export const DEFAULT_BRANCHES = [
   {
     id: "school-1",
-    name: "School 1",
-    shortName: "1",
+    name: "一校",
+    shortName: "一",
     status: "active",
     sortOrder: 1,
   },
   {
     id: "school-2",
-    name: "School 2",
-    shortName: "2",
+    name: "二校",
+    shortName: "二",
     status: "active",
     sortOrder: 2,
   },
   {
     id: "school-3",
-    name: "School 3",
-    shortName: "3",
+    name: "三校",
+    shortName: "三",
     status: "active",
     sortOrder: 3,
   },
@@ -37,15 +37,15 @@ export const DEFAULT_BRANCHES = [
 const DEFAULT_PROGRAMS = [
   {
     id: "elementary-core",
-    name: "Elementary afterschool",
-    subjects: ["Homework", "English", "Math", "Art", "Board games"],
+    name: "國小課後班",
+    subjects: ["安親", "英文", "數學", "美術", "圍棋"],
     status: "active",
     sortOrder: 1,
   },
   {
     id: "middle-school-core",
-    name: "Middle school afterschool",
-    subjects: ["English", "Math", "Science"],
+    name: "國中課後班",
+    subjects: ["英文", "數學", "理化"],
     status: "active",
     sortOrder: 2,
   },
@@ -72,10 +72,10 @@ const PENDING_PERMISSIONS = {
 };
 
 const ROLE_LABELS = {
-  1: "Level 1 owner",
-  2: "Level 2 branch lead",
-  3: "Level 3 administrator",
-  4: "Level 4 pending access",
+  1: "等級 1：負責人",
+  2: "等級 2：分校主管",
+  3: "等級 3：行政人員",
+  4: "等級 4：等待開通",
 };
 
 const normalizeEmail = (email) => (email || "").trim().toLowerCase();
@@ -96,7 +96,7 @@ const isBootstrapOwner = (email) =>
 const requireFirestore = () => {
   if (!firestore) {
     throw new Error(
-      "Firebase is not configured. Add the VITE_FB_* values before loading the dashboard.",
+      "Firebase 尚未設定完成。請先加入 VITE_FB_* 設定值，再載入管理後台。",
     );
   }
 
@@ -151,7 +151,7 @@ async function listSubcollection(path) {
 }
 
 export function getRoleLevelLabel(level) {
-  return ROLE_LABELS[level] || "Custom role";
+  return ROLE_LABELS[level] || "自訂權限";
 }
 
 function canSeedOrganization(member) {
@@ -215,14 +215,14 @@ export async function ensureDefaultOrganization(member) {
     };
   } else {
     if (!seedAllowed) {
-      throw new Error("The organization has not been created yet.");
+      throw new Error("組織尚未建立。");
     }
 
     const organizationData = {
       name: "Afterschool Pay",
       slug: "afterschoolpay",
       status: "active",
-      timezone: "America/Los_Angeles",
+      timezone: "Asia/Taipei",
       plan: "prototype",
     };
 

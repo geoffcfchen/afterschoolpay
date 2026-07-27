@@ -10,40 +10,51 @@ import {
 const modules = [
   {
     id: "daily-ledger",
-    title: "Daily income and expense",
-    description:
-      "Record family payments, refunds, supplies, and school-site cash movement.",
+    title: "每日收支",
+    description: "記錄家長付款、退款、教材費、雜支與各分校現金流。",
     permission: "canRecordDailyLedger",
   },
   {
     id: "teacher-payroll",
-    title: "Teacher payroll",
-    description:
-      "Review teacher salary records by branch, period, class, and payout status.",
+    title: "老師薪資",
+    description: "依分校、期間、課程與發放狀態查看老師薪資紀錄。",
     permission: "canViewPayroll",
   },
   {
     id: "students-programs",
-    title: "Students and programs",
-    description:
-      "Keep families, students, subjects, enrollment, and class rosters together.",
+    title: "學生與課程",
+    description: "管理家長、學生、科目、報名紀錄與班級名單。",
     permission: "canViewStudents",
+    path: "/students-courses",
   },
   {
     id: "branch-transfer",
-    title: "Branch transfer",
-    description:
-      "Move shared costs or payments from one school site to another with a clear trail.",
+    title: "分校轉帳",
+    description: "把共同支出或付款調整到正確分校，並保留清楚紀錄。",
     permission: "canTransferBetweenBranches",
   },
   {
     id: "team-access",
-    title: "Team access",
-    description:
-      "Invite staff and control which permission level each person receives.",
+    title: "團隊權限",
+    description: "邀請員工並設定每個人的權限等級與可查看分校。",
     permission: "canManageMembers",
   },
 ];
+
+const localizedBranches = {
+  "school-1": {
+    name: "一校",
+    shortName: "一",
+  },
+  "school-2": {
+    name: "二校",
+    shortName: "二",
+  },
+  "school-3": {
+    name: "三校",
+    shortName: "三",
+  },
+};
 
 function getDisplayName(user) {
   if (user.displayName) {
@@ -54,19 +65,27 @@ function getDisplayName(user) {
     return user.email.split("@")[0];
   }
 
-  return "there";
+  return "您好";
+}
+
+function getBranchName(branch) {
+  return localizedBranches[branch.id]?.name || branch.name;
+}
+
+function getBranchShortName(branch) {
+  return localizedBranches[branch.id]?.shortName || branch.shortName;
 }
 
 function getWorkspaceErrorMessage(error) {
   if (error.code === "permission-denied") {
-    return "Firestore rejected the workspace request. Publish the starter Firestore rules and confirm your owner email is set.";
+    return "Firestore 拒絕讀取工作區。請先發布 Firestore rules，並確認負責人 email 已設定。";
   }
 
-  if (error.message === "The organization has not been created yet.") {
-    return "The organization has not been created yet. Sign in once with the bootstrap owner email first.";
+  if (error.message === "組織尚未建立。") {
+    return "組織尚未建立。請先用負責人 email 登入一次。";
   }
 
-  return "Your account is signed in, but the workspace could not load yet. Check Firestore rules and setup.";
+  return "帳號已登入，但目前無法載入工作區。請確認 Firestore rules 與專案設定。";
 }
 
 function DashboardPage() {
@@ -75,7 +94,7 @@ function DashboardPage() {
   const [currentUser, setCurrentUser] = useState(null);
   const [workspace, setWorkspace] = useState(null);
   const [loadError, setLoadError] = useState(
-    auth ? "" : "Firebase is not configured for this build.",
+    auth ? "" : "這個版本尚未設定 Firebase。",
   );
 
   useEffect(() => {
@@ -143,7 +162,7 @@ function DashboardPage() {
           <span className="brand-mark dark" aria-hidden="true">
             AP
           </span>
-          <p>Loading your workspace...</p>
+          <p>正在載入工作區...</p>
         </div>
       </main>
     );
@@ -164,12 +183,12 @@ function DashboardPage() {
             onClick={handleSignOut}
             type="button"
           >
-            Log out
+            登出
           </button>
         </header>
         <section className="dashboard-message-panel">
-          <p className="dashboard-kicker">Setup needed</p>
-          <h1>Workspace could not load</h1>
+          <p className="dashboard-kicker">需要設定</p>
+          <h1>無法載入工作區</h1>
           <p>{loadError}</p>
         </section>
       </main>
@@ -200,7 +219,7 @@ function DashboardPage() {
             onClick={handleSignOut}
             type="button"
           >
-            Log out
+            登出
           </button>
         </div>
       </header>
@@ -208,64 +227,63 @@ function DashboardPage() {
       <section className="dashboard-shell" aria-labelledby="dashboard-title">
         {!currentUser?.emailVerified ? (
           <div className="dashboard-banner">
-            Your verification email was sent. Confirm your email when you can.
+            驗證信已寄出。請到信箱完成 email 驗證。
           </div>
         ) : null}
 
         <div className="dashboard-hero-row">
           <div>
             <p className="dashboard-kicker">{workspace.organization.name}</p>
-            <h1 id="dashboard-title">Welcome, {getDisplayName(currentUser)}</h1>
+            <h1 id="dashboard-title">歡迎，{getDisplayName(currentUser)}</h1>
             <p className="dashboard-subtitle">
-              This is the first logged-in workspace for branches, daily records,
-              teacher payroll, and team permissions.
+              這是第一版登入後的管理後台，先整理分校、每日收支、老師薪資與團隊權限。
             </p>
           </div>
           <span
             className={`member-status ${activeMember ? "active" : "pending"}`}
           >
-            {activeMember ? "Active access" : "Waiting for access"}
+            {activeMember ? "已開通" : "等待開通"}
           </span>
         </div>
 
-        <div className="dashboard-summary-grid" aria-label="Account summary">
+        <div className="dashboard-summary-grid" aria-label="帳號摘要">
           <article className="summary-tile">
-            <span>Permission level</span>
+            <span>權限等級</span>
             <strong>{getRoleLevelLabel(member.roleLevel)}</strong>
           </article>
           <article className="summary-tile">
-            <span>Visible school sites</span>
+            <span>可查看分校</span>
             <strong>{branchCount}</strong>
           </article>
           <article className="summary-tile">
-            <span>Available modules</span>
+            <span>可使用功能</span>
             <strong>{enabledModules.length}</strong>
           </article>
         </div>
 
         {!activeMember ? (
           <section className="access-panel">
-            <p className="dashboard-kicker">Account created</p>
-            <h2>Waiting for an owner to approve access</h2>
+            <p className="dashboard-kicker">帳號已建立</p>
+            <h2>等待負責人開通權限</h2>
             <p>
-              Your login is saved. Once an owner assigns your permission level
-              and school sites, this page will open the tools for your role.
+              你的登入帳號已儲存。負責人設定你的權限等級與可查看分校後，
+              這裡會開啟對應的功能。
             </p>
           </section>
         ) : (
           <div className="workspace-grid">
             <aside className="branch-panel" aria-labelledby="branches-title">
               <div className="panel-heading">
-                <p className="dashboard-kicker">School sites</p>
-                <h2 id="branches-title">Branches you can see</h2>
+                <p className="dashboard-kicker">分校</p>
+                <h2 id="branches-title">你可以查看的分校</h2>
               </div>
               <div className="branch-list">
                 {workspace.visibleBranches.map((branch) => (
                   <article className="branch-card" key={branch.id}>
-                    <span>{branch.shortName}</span>
+                    <span>{getBranchShortName(branch)}</span>
                     <div>
-                      <h3>{branch.name}</h3>
-                      <p>Daily income and expense ready for setup</p>
+                      <h3>{getBranchName(branch)}</h3>
+                      <p>每日收支功能已準備設定</p>
                     </div>
                   </article>
                 ))}
@@ -274,8 +292,8 @@ function DashboardPage() {
 
             <section className="module-panel" aria-labelledby="modules-title">
               <div className="panel-heading">
-                <p className="dashboard-kicker">Workspace</p>
-                <h2 id="modules-title">Tools for your role</h2>
+                <p className="dashboard-kicker">工作區</p>
+                <h2 id="modules-title">依權限開放的功能</h2>
               </div>
               <div className="module-grid">
                 {modules.map((module) => {
@@ -290,7 +308,11 @@ function DashboardPage() {
                         <h3>{module.title}</h3>
                         <p>{module.description}</p>
                       </div>
-                      <span>{enabled ? "Available" : "Locked"}</span>
+                      {enabled && module.path ? (
+                        <Link to={module.path}>開啟</Link>
+                      ) : (
+                        <span>{enabled ? "可使用" : "未開放"}</span>
+                      )}
                     </article>
                   );
                 })}

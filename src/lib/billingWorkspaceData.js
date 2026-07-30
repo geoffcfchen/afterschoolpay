@@ -23,24 +23,29 @@ const requireFirestore = () => {
 
 const toPlainData = (value) => JSON.parse(JSON.stringify(value));
 
-const workspacePath = (orgId = DEFAULT_ORG_ID) => [
-  "organizations",
-  orgId,
-  "billingWorkspaces",
-  CURRENT_WORKSPACE_ID,
-];
+const workspacePath = (orgId = DEFAULT_ORG_ID, branchId = "") =>
+  branchId
+    ? [
+        "organizations",
+        orgId,
+        "branches",
+        branchId,
+        "billingWorkspaces",
+        CURRENT_WORKSPACE_ID,
+      ]
+    : ["organizations", orgId, "billingWorkspaces", CURRENT_WORKSPACE_ID];
 
-const classesPath = (orgId = DEFAULT_ORG_ID) => [
-  ...workspacePath(orgId),
+const classesPath = (orgId = DEFAULT_ORG_ID, branchId = "") => [
+  ...workspacePath(orgId, branchId),
   "classes",
 ];
 
-function getWorkspaceRef(db, orgId) {
-  return doc(db, ...workspacePath(orgId));
+function getWorkspaceRef(db, orgId, branchId) {
+  return doc(db, ...workspacePath(orgId, branchId));
 }
 
-function getClassesCollection(db, orgId) {
-  return collection(db, ...classesPath(orgId));
+function getClassesCollection(db, orgId, branchId) {
+  return collection(db, ...classesPath(orgId, branchId));
 }
 
 function makeClassDocId(index) {
@@ -49,16 +54,18 @@ function makeClassDocId(index) {
 
 export async function saveCurrentBillingWorkspace({
   activeClassId,
+  branchId = "",
   dismissedDoubleCourseRows,
   feeOptions,
   invoiceState,
+  orgId = DEFAULT_ORG_ID,
   result,
   savedByUid,
   selectedInvoiceRowId,
 }) {
   const db = requireFirestore();
-  const workspaceRef = getWorkspaceRef(db, DEFAULT_ORG_ID);
-  const classCollection = getClassesCollection(db, DEFAULT_ORG_ID);
+  const workspaceRef = getWorkspaceRef(db, orgId, branchId);
+  const classCollection = getClassesCollection(db, orgId, branchId);
   const [workspaceSnapshot, classSnapshot] = await Promise.all([
     getDoc(workspaceRef),
     getDocs(classCollection),
@@ -83,6 +90,7 @@ export async function saveCurrentBillingWorkspace({
     feeItems: toPlainData(result.feeItems || []),
     feeOptions: toPlainData(feeOptions || []),
     activeClassId: activeClassId || "",
+    branchId,
     selectedInvoiceRowId: selectedInvoiceRowId || "",
     dismissedDoubleCourseRows: toPlainData(dismissedDoubleCourseRows || []),
     savedByUid: savedByUid || "",
@@ -116,9 +124,9 @@ export async function saveCurrentBillingWorkspace({
   };
 }
 
-export async function loadCurrentBillingWorkspace() {
+async function readCurrentBillingWorkspace(orgId = DEFAULT_ORG_ID, branchId = "") {
   const db = requireFirestore();
-  const workspaceRef = getWorkspaceRef(db, DEFAULT_ORG_ID);
+  const workspaceRef = getWorkspaceRef(db, orgId, branchId);
   const workspaceSnapshot = await getDoc(workspaceRef);
 
   if (!workspaceSnapshot.exists()) {
@@ -126,7 +134,7 @@ export async function loadCurrentBillingWorkspace() {
   }
 
   const workspace = workspaceSnapshot.data();
-  const classSnapshot = await getDocs(getClassesCollection(db, DEFAULT_ORG_ID));
+  const classSnapshot = await getDocs(getClassesCollection(db, orgId, branchId));
   const classRecords = classSnapshot.docs
     .map((record) => ({
       id: record.id,
@@ -144,6 +152,7 @@ export async function loadCurrentBillingWorkspace() {
   return {
     id: CURRENT_WORKSPACE_ID,
     activeClassId: workspace.activeClassId || classSheets[0]?.id || "",
+    branchId: workspace.branchId || branchId,
     dismissedDoubleCourseRows: workspace.dismissedDoubleCourseRows || [],
     feeOptions: workspace.feeOptions || workspace.feeItems || [],
     invoiceState: {
@@ -183,10 +192,35 @@ export async function loadCurrentBillingWorkspace() {
   };
 }
 
-export async function clearCurrentBillingWorkspace() {
+export async function loadCurrentBillingWorkspace(
+  orgId = DEFAULT_ORG_ID,
+  branchId = "",
+  { fallbackToOrganizationWorkspace = false } = {},
+) {
+  const branchWorkspace = await readCurrentBillingWorkspace(orgId, branchId);
+
+  if (branchWorkspace || !branchId || !fallbackToOrganizationWorkspace) {
+    return branchWorkspace;
+  }
+
+  const legacyWorkspace = await readCurrentBillingWorkspace(orgId, "");
+
+  return legacyWorkspace
+    ? {
+        ...legacyWorkspace,
+        branchId,
+        legacyOrganizationWorkspace: true,
+      }
+    : null;
+}
+
+export async function clearCurrentBillingWorkspace(
+  orgId = DEFAULT_ORG_ID,
+  branchId = "",
+) {
   const db = requireFirestore();
-  const workspaceRef = getWorkspaceRef(db, DEFAULT_ORG_ID);
-  const classSnapshot = await getDocs(getClassesCollection(db, DEFAULT_ORG_ID));
+  const workspaceRef = getWorkspaceRef(db, orgId, branchId);
+  const classSnapshot = await getDocs(getClassesCollection(db, orgId, branchId));
 
   await Promise.all([
     ...classSnapshot.docs.map((record) => deleteDoc(record.ref)),

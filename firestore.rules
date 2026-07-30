@@ -29,12 +29,30 @@ service cloud.firestore {
         && currentMember(orgId).data.roleLevel == 1;
     }
 
+    function isOrganizationCreator(orgId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/organizations/$(orgId))
+        && get(/databases/$(database)/documents/organizations/$(orgId)).data.createdByUid == request.auth.uid;
+    }
+
     function canUseStudentWorkspace(orgId) {
       return hasOrgMember(orgId)
         && currentMember(orgId).data.status == "active"
         && (
           currentMember(orgId).data.roleLevel == 1
           || currentMember(orgId).data.permissions.canViewStudents == true
+        );
+    }
+
+    function canUseBranchStudentWorkspace(orgId, branchId) {
+      return canUseStudentWorkspace(orgId)
+        && (
+          currentMember(orgId).data.roleLevel == 1
+          || currentMember(orgId).data.permissions.canViewAllBranches == true
+          || (
+            currentMember(orgId).data.branchIds is list
+            && currentMember(orgId).data.branchIds.hasAny([branchId])
+          )
         );
     }
 
@@ -48,6 +66,14 @@ service cloud.firestore {
     function isBootstrapOwnerMember(memberId) {
       return isSelf(memberId)
         && isBootstrapOwner()
+        && request.resource.data.role == "owner"
+        && request.resource.data.roleLevel == 1
+        && request.resource.data.status == "active";
+    }
+
+    function isCreatorOwnerMember(orgId, memberId) {
+      return isSelf(memberId)
+        && isOrganizationCreator(orgId)
         && request.resource.data.role == "owner"
         && request.resource.data.roleLevel == 1
         && request.resource.data.status == "active";
@@ -80,13 +106,20 @@ service cloud.firestore {
 
     match /organizations/{orgId} {
       allow read: if hasOrgMember(orgId) || isBootstrapOwner();
-      allow create: if isBootstrapOwner();
+      allow create: if isBootstrapOwner()
+        || (
+          signedIn()
+          && request.resource.data.createdByUid == request.auth.uid
+          && request.resource.data.status == "active"
+          && request.resource.data.name is string
+        );
       allow update, delete: if isOrgOwner(orgId) || isBootstrapOwner();
 
       match /members/{memberId} {
         allow read: if isSelf(memberId) || hasOrgMember(orgId) || isBootstrapOwner();
         allow create: if isPendingSelfMember(memberId)
           || isBootstrapOwnerMember(memberId)
+          || isCreatorOwnerMember(orgId, memberId)
           || isOrgOwner(orgId);
         allow update: if isOrgOwner(orgId)
           || isBootstrapOwner()
@@ -97,6 +130,16 @@ service cloud.firestore {
       match /branches/{branchId} {
         allow read: if hasOrgMember(orgId) || isBootstrapOwner();
         allow create, update, delete: if isOrgOwner(orgId) || isBootstrapOwner();
+
+        match /billingWorkspaces/{workspaceId} {
+          allow read, write: if canUseBranchStudentWorkspace(orgId, branchId)
+            || isBootstrapOwner();
+
+          match /classes/{classId} {
+            allow read, write: if canUseBranchStudentWorkspace(orgId, branchId)
+              || isBootstrapOwner();
+          }
+        }
       }
 
       match /programs/{programId} {

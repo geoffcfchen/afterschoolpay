@@ -11,6 +11,10 @@ import { auth, firestore } from "./lib/firebase";
 import "./App.css";
 
 const StudentsCoursesPage = lazy(() => import("./pages/StudentsCoursesPage"));
+const TeamAccessPage = lazy(() => import("./pages/TeamAccessPage"));
+const OrganizationSetupPage = lazy(
+  () => import("./pages/OrganizationSetupPage"),
+);
 
 const benefits = [
   {
@@ -308,6 +312,44 @@ function App() {
             }
           >
             <StudentsCoursesPage />
+          </Suspense>
+        }
+      />
+      <Route
+        path="/team-access"
+        element={
+          <Suspense
+            fallback={
+              <main className="dashboard-page">
+                <div className="dashboard-loading">
+                  <span className="brand-mark dark" aria-hidden="true">
+                    AP
+                  </span>
+                  <p>正在載入團隊權限...</p>
+                </div>
+              </main>
+            }
+          >
+            <TeamAccessPage />
+          </Suspense>
+        }
+      />
+      <Route
+        path="/organization-setup"
+        element={
+          <Suspense
+            fallback={
+              <main className="auth-page">
+                <div className="dashboard-loading">
+                  <span className="brand-mark dark" aria-hidden="true">
+                    AP
+                  </span>
+                  <p>正在載入組織設定...</p>
+                </div>
+              </main>
+            }
+          >
+            <OrganizationSetupPage />
           </Suspense>
         }
       />

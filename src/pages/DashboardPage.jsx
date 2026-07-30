@@ -38,6 +38,7 @@ const modules = [
     title: "團隊權限",
     description: "邀請員工並設定每個人的權限等級與可查看分校。",
     permission: "canManageMembers",
+    path: "/team-access",
   },
 ];
 
@@ -79,6 +80,10 @@ function getBranchShortName(branch) {
 function getWorkspaceErrorMessage(error) {
   if (error.code === "permission-denied") {
     return "Firestore 拒絕讀取工作區。請先發布 Firestore rules，並確認負責人 email 已設定。";
+  }
+
+  if (error.message === "尚未選擇組織。") {
+    return "請先選擇要加入的組織，或建立新的組織。";
   }
 
   if (error.message === "組織尚未建立。") {
@@ -130,6 +135,11 @@ function DashboardPage() {
         console.error("Unable to load organization workspace:", error);
 
         if (active) {
+          if (error.message === "尚未選擇組織。") {
+            navigate("/organization-setup", { replace: true });
+            return;
+          }
+
           setLoadError(getWorkspaceErrorMessage(error));
           setAuthStatus("error");
         }
@@ -140,7 +150,7 @@ function DashboardPage() {
       active = false;
       unsubscribe();
     };
-  }, []);
+  }, [navigate]);
 
   const handleSignOut = async () => {
     if (!auth) {

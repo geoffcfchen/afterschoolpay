@@ -62,10 +62,10 @@ function currentMonthValue() {
   return new Date().toISOString().slice(0, 7);
 }
 
-function createMonthlyAdditionalItem() {
+function createAdditionalSalaryItem() {
   const id = globalThis.crypto?.randomUUID
-    ? `monthly-extra-${globalThis.crypto.randomUUID()}`
-    : `monthly-extra-${Date.now().toString(36)}-${Math.random()
+    ? `additional-salary-${globalThis.crypto.randomUUID()}`
+    : `additional-salary-${Date.now().toString(36)}-${Math.random()
         .toString(36)
         .slice(2, 8)}`;
 
@@ -113,7 +113,7 @@ function TeacherPayrollPage() {
     salaryDate: todayDateValue(),
     salaryMonth: currentMonthValue(),
   });
-  const [monthlyAdditionalItems, setMonthlyAdditionalItems] = useState([]);
+  const [additionalSalaryItems, setAdditionalSalaryItems] = useState([]);
   const [salaryClasses, setSalaryClasses] = useState([
     createSalaryClassDraft(),
   ]);
@@ -345,17 +345,20 @@ function TeacherPayrollPage() {
     [salaryClasses],
   );
   const monthlyTotal = Number(monthlyForm.amount) || 0;
-  const monthlyAdditionalTotal = useMemo(
+  const additionalSalaryTotal = useMemo(
     () =>
-      monthlyAdditionalItems.reduce(
+      additionalSalaryItems.reduce(
         (total, item) => total + (Number(item.amount) || 0),
         0,
       ),
-    [monthlyAdditionalItems],
+    [additionalSalaryItems],
   );
-  const monthlyGrandTotal = monthlyTotal + monthlyAdditionalTotal;
+  const monthlyGrandTotal = monthlyTotal + additionalSalaryTotal;
+  const eightLessonGrandTotal = eightLessonTotal + additionalSalaryTotal;
   const salarySlipTotal =
-    activePayrollType === "monthly" ? monthlyGrandTotal : eightLessonTotal;
+    activePayrollType === "monthly"
+      ? monthlyGrandTotal
+      : eightLessonGrandTotal;
   const unpaidSalaryTotal = branchSalarySlips
     .filter((slip) => slip.status === "unpaid")
     .reduce((total, slip) => total + (Number(slip.balance ?? slip.total) || 0), 0);
@@ -411,23 +414,23 @@ function TeacherPayrollPage() {
     }));
   };
 
-  const addMonthlyAdditionalItem = () => {
-    setMonthlyAdditionalItems((current) => [
+  const addAdditionalSalaryItem = () => {
+    setAdditionalSalaryItems((current) => [
       ...current,
-      createMonthlyAdditionalItem(),
+      createAdditionalSalaryItem(),
     ]);
   };
 
-  const updateMonthlyAdditionalItem = (itemId, changes) => {
-    setMonthlyAdditionalItems((current) =>
+  const updateAdditionalSalaryItem = (itemId, changes) => {
+    setAdditionalSalaryItems((current) =>
       current.map((item) =>
         item.id === itemId ? { ...item, ...changes } : item,
       ),
     );
   };
 
-  const removeMonthlyAdditionalItem = (itemId) => {
-    setMonthlyAdditionalItems((current) =>
+  const removeAdditionalSalaryItem = (itemId) => {
+    setAdditionalSalaryItems((current) =>
       current.filter((item) => item.id !== itemId),
     );
   };
@@ -484,12 +487,12 @@ function TeacherPayrollPage() {
 
     try {
       const saved = await saveTeacherSalarySlip({
+        additionalSalaryItems,
         branch: selectedBranch,
         classDrafts: salaryClasses,
         employee: selectedEmployee,
         generatedByEmail: currentUser?.email || "",
         generatedByUid: currentUser?.uid || "",
-        monthlyAdditionalItems,
         monthlyAmount: monthlyForm.amount,
         organization: workspace.organization,
         orgId: workspace.activeOrgId,
@@ -509,13 +512,92 @@ function TeacherPayrollPage() {
           ...current,
           amount: "",
         }));
-        setMonthlyAdditionalItems([]);
       }
+      setAdditionalSalaryItems([]);
     } catch (error) {
       console.error("Unable to save teacher salary slip:", error);
       setSalarySlipMessage(error.message || "無法產生老師薪資單。");
       setSalarySlipSaveStatus("error");
     }
+  };
+
+  const renderAdditionalSalaryPanel = ({ baseLabel, baseTotal }) => {
+    const titleId = `additional-salary-title-${activePayrollType}`;
+
+    return (
+      <section
+        className="monthly-additional-panel"
+        aria-labelledby={titleId}
+      >
+        <div className="monthly-additional-heading">
+          <div>
+            <h3 id={titleId}>額外薪資</h3>
+            <p>可新增多筆加給、補薪、代課或其他原因。</p>
+          </div>
+          <button
+            className="table-panel-action-button secondary-table-action"
+            onClick={addAdditionalSalaryItem}
+            type="button"
+          >
+            新增額外薪資
+          </button>
+        </div>
+
+        {additionalSalaryItems.length ? (
+          <div className="monthly-additional-list">
+            {additionalSalaryItems.map((item, index) => (
+              <div className="monthly-additional-row" key={item.id}>
+                <label>
+                  原因
+                  <input
+                    onChange={(event) =>
+                      updateAdditionalSalaryItem(item.id, {
+                        reason: event.target.value,
+                      })
+                    }
+                    placeholder={`額外薪資 ${index + 1} 原因`}
+                    value={item.reason}
+                  />
+                </label>
+                <label>
+                  金額
+                  <input
+                    onChange={(event) =>
+                      updateAdditionalSalaryItem(item.id, {
+                        amount: event.target.value,
+                      })
+                    }
+                    placeholder="例如：1200"
+                    type="number"
+                    value={item.amount}
+                  />
+                </label>
+                <button
+                  className="secondary-modal-button"
+                  onClick={() => removeAdditionalSalaryItem(item.id)}
+                  type="button"
+                >
+                  移除
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="ledger-state-note">沒有額外薪資項目。</p>
+        )}
+
+        <div className="monthly-salary-breakdown">
+          <span>
+            {baseLabel}
+            <strong>{formatCurrency(baseTotal)}</strong>
+          </span>
+          <span>
+            額外薪資
+            <strong>{formatCurrency(additionalSalaryTotal)}</strong>
+          </span>
+        </div>
+      </section>
+    );
   };
 
   if (authStatus === "signed-out") {
@@ -837,87 +919,10 @@ function TeacherPayrollPage() {
                           </label>
                         </div>
 
-                        <section
-                          className="monthly-additional-panel"
-                          aria-labelledby="monthly-additional-title"
-                        >
-                          <div className="monthly-additional-heading">
-                            <div>
-                              <h3 id="monthly-additional-title">額外薪資</h3>
-                              <p>可新增多筆加給、補薪或其他原因。</p>
-                            </div>
-                            <button
-                              className="table-panel-action-button secondary-table-action"
-                              onClick={addMonthlyAdditionalItem}
-                              type="button"
-                            >
-                              新增額外薪資
-                            </button>
-                          </div>
-
-                          {monthlyAdditionalItems.length ? (
-                            <div className="monthly-additional-list">
-                              {monthlyAdditionalItems.map((item, index) => (
-                                <div
-                                  className="monthly-additional-row"
-                                  key={item.id}
-                                >
-                                  <label>
-                                    原因
-                                    <input
-                                      onChange={(event) =>
-                                        updateMonthlyAdditionalItem(item.id, {
-                                          reason: event.target.value,
-                                        })
-                                      }
-                                      placeholder={`額外薪資 ${index + 1} 原因`}
-                                      value={item.reason}
-                                    />
-                                  </label>
-                                  <label>
-                                    金額
-                                    <input
-                                      onChange={(event) =>
-                                        updateMonthlyAdditionalItem(item.id, {
-                                          amount: event.target.value,
-                                        })
-                                      }
-                                      placeholder="例如：1200"
-                                      type="number"
-                                      value={item.amount}
-                                    />
-                                  </label>
-                                  <button
-                                    className="secondary-modal-button"
-                                    onClick={() =>
-                                      removeMonthlyAdditionalItem(item.id)
-                                    }
-                                    type="button"
-                                  >
-                                    移除
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <p className="ledger-state-note">
-                              沒有額外薪資項目。
-                            </p>
-                          )}
-
-                          <div className="monthly-salary-breakdown">
-                            <span>
-                              基本月薪
-                              <strong>{formatCurrency(monthlyTotal)}</strong>
-                            </span>
-                            <span>
-                              額外薪資
-                              <strong>
-                                {formatCurrency(monthlyAdditionalTotal)}
-                              </strong>
-                            </span>
-                          </div>
-                        </section>
+                        {renderAdditionalSalaryPanel({
+                          baseLabel: "基本月薪",
+                          baseTotal: monthlyTotal,
+                        })}
                       </div>
                     ) : (
                       <div className="salary-class-list">
@@ -1032,6 +1037,10 @@ function TeacherPayrollPage() {
                         >
                           新增課程
                         </button>
+                        {renderAdditionalSalaryPanel({
+                          baseLabel: "8堂課小計",
+                          baseTotal: eightLessonTotal,
+                        })}
                       </div>
                     )}
 

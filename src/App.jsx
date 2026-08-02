@@ -11,6 +11,8 @@ import { auth, firestore } from "./lib/firebase";
 import "./App.css";
 
 const StudentsCoursesPage = lazy(() => import("./pages/StudentsCoursesPage"));
+const DailyLedgerPage = lazy(() => import("./pages/DailyLedgerPage"));
+const TeacherPayrollPage = lazy(() => import("./pages/TeacherPayrollPage"));
 const TeamAccessPage = lazy(() => import("./pages/TeamAccessPage"));
 const OrganizationSetupPage = lazy(
   () => import("./pages/OrganizationSetupPage"),
@@ -312,6 +314,44 @@ function App() {
             }
           >
             <StudentsCoursesPage />
+          </Suspense>
+        }
+      />
+      <Route
+        path="/daily-ledger"
+        element={
+          <Suspense
+            fallback={
+              <main className="dashboard-page">
+                <div className="dashboard-loading">
+                  <span className="brand-mark dark" aria-hidden="true">
+                    AP
+                  </span>
+                  <p>正在載入每日收支...</p>
+                </div>
+              </main>
+            }
+          >
+            <DailyLedgerPage />
+          </Suspense>
+        }
+      />
+      <Route
+        path="/teacher-payroll"
+        element={
+          <Suspense
+            fallback={
+              <main className="dashboard-page">
+                <div className="dashboard-loading">
+                  <span className="brand-mark dark" aria-hidden="true">
+                    AP
+                  </span>
+                  <p>正在載入老師薪資...</p>
+                </div>
+              </main>
+            }
+          >
+            <TeacherPayrollPage />
           </Suspense>
         }
       />

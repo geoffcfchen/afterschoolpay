@@ -1,15 +1,25 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { auth } from "../lib/firebase";
 import {
-  loadCurrentBillingWorkspace,
+  saveBranchFeeOptions,
   saveCurrentBillingWorkspace,
+  subscribeBranchFeeOptions,
+  subscribeCurrentBillingWorkspace,
 } from "../lib/billingWorkspaceData";
 import {
   createOrganizationBranch,
+  isOrganizationSetupRequiredError,
   loadOrganizationWorkspace,
 } from "../lib/orgData";
+import {
+  createStudentAccountId,
+  getInvoiceStatusLabel,
+  saveStudentInvoiceNotice,
+  subscribeStudentInvoices,
+  syncStudentAccountsFromClassSheets,
+} from "../lib/studentInvoiceData";
 import { organizeTuitionBagFile } from "../lib/tuitionBagImport";
 
 const EMPTY_FEE_FORM = {
@@ -28,6 +38,10 @@ const SUBJECT_OPTIONS = [
   { value: "理", label: "理化" },
   { value: "自", label: "自訂" },
 ];
+const ATTENDANCE_GROUP_OPTIONS = [
+  { value: "A", label: "A班" },
+  { value: "B", label: "B班" },
+];
 const DOUBLE_COURSE_DISCOUNT_CODE = "AUTO-DOUBLE-COURSE";
 const DOUBLE_COURSE_DISCOUNT_OPTION = {
   id: "fee-auto-double-course",
@@ -44,6 +58,9 @@ const DOUBLE_COURSE_DISCOUNT_OPTION = {
   ],
   automatic: true,
 };
+const STUDENTS_COURSES_CLIENT_ID = `students-courses-${Date.now()}-${Math.random()
+  .toString(36)
+  .slice(2, 10)}`;
 
 function getWorkspaceErrorMessage(error) {
   if (error.code === "permission-denied") {
@@ -60,6 +77,26 @@ function formatCurrency(amount) {
 function formatDateShort(date) {
   const [, month, day] = date.split("-");
   return `${Number(month)}/${Number(day)}`;
+}
+
+function formatDateTime(value) {
+  if (!value) {
+    return "未記錄";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "未記錄";
+  }
+
+  return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()} ${String(
+    date.getHours(),
+  ).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+function getShortStudentId(studentId = "") {
+  return studentId.replace(/^student-/, "").slice(0, 8) || "未設定";
 }
 
 function sortDates(dates) {
@@ -104,6 +141,56 @@ function createStudentCourseSelections(sheet) {
       ),
     ]),
   );
+}
+
+function createCourseAttendanceEnabledMap(sheet, enabled = false) {
+  return Object.fromEntries(
+    sheet.courseBlocks.map((course) => [course.id, enabled]),
+  );
+}
+
+function createStudentAttendanceGroupsByCourse(sheet, defaultGroup = "A") {
+  return Object.fromEntries(
+    sheet.courseBlocks.map((course) => [
+      course.id,
+      Object.fromEntries(sheet.studentRows.map((row) => [row.id, defaultGroup])),
+    ]),
+  );
+}
+
+function isCourseAttendanceGroupsEnabled(classDraft, courseId) {
+  return Boolean(classDraft?.attendanceGroupEnabledByCourse?.[courseId]);
+}
+
+function getStudentCourseAttendanceGroup(classDraft, courseId, rowId) {
+  const courseGroup = classDraft?.studentAttendanceGroupsByCourse?.[courseId]?.[
+    rowId
+  ];
+
+  if (courseGroup === "B") {
+    return "B";
+  }
+
+  return "A";
+}
+
+function getAttendanceGroupLabel(group) {
+  return ATTENDANCE_GROUP_OPTIONS.find((option) => option.value === group)?.label ||
+    "A班";
+}
+
+function getAttendanceDateColumns(classDraft, courseId) {
+  const dates = sortDates(classDraft?.globalDates?.[courseId] || []);
+  const minimumColumnCount = 8;
+  const blankCount = Math.max(0, minimumColumnCount - dates.length);
+
+  return [
+    ...dates.map((date) => ({ id: date, label: formatDateShort(date) })),
+    ...Array.from({ length: blankCount }, (_, index) => ({
+      id: `blank-${index}`,
+      label: "/",
+    })),
+  ];
 }
 
 function isStudentCourseSelected(classDraft, rowId, course) {
@@ -259,6 +346,9 @@ function createInvoiceState(importResult) {
             ]),
           ),
           studentCourseSelections: createStudentCourseSelections(sheet),
+          attendanceGroupEnabledByCourse: createCourseAttendanceEnabledMap(sheet),
+          studentAttendanceGroupsByCourse:
+            createStudentAttendanceGroupsByCourse(sheet),
           studentFeeCodes: Object.fromEntries(
             sheet.studentRows.map((row) => {
               const feeCodes = row.feeReferences.map((fee) => fee.code);
@@ -339,6 +429,33 @@ function createBlankClassForm() {
   };
 }
 
+function createStudentRowId(classId) {
+  if (globalThis.crypto?.randomUUID) {
+    return `${classId}-row-${globalThis.crypto.randomUUID()}`;
+  }
+
+  return `${classId}-row-${Date.now().toString(36)}-${Math.random()
+    .toString(36)
+    .slice(2, 10)}`;
+}
+
+function withoutRecordKey(record = {}, key) {
+  const nextRecord = { ...record };
+
+  delete nextRecord[key];
+
+  return nextRecord;
+}
+
+function withoutNestedRecordKey(record = {}, key) {
+  return Object.fromEntries(
+    Object.entries(record || {}).map(([recordKey, nestedRecord]) => [
+      recordKey,
+      withoutRecordKey(nestedRecord, key),
+    ]),
+  );
+}
+
 function getDefaultCourseLabel(subjectCode) {
   return getSubjectAlias(subjectCode) || "課程";
 }
@@ -390,6 +507,9 @@ function createManualClassDraft(sheet) {
     globalDates: Object.fromEntries(
       sheet.courseBlocks.map((course) => [course.id, course.globalDates]),
     ),
+    attendanceGroupEnabledByCourse: createCourseAttendanceEnabledMap(sheet),
+    studentAttendanceGroupsByCourse:
+      createStudentAttendanceGroupsByCourse(sheet),
     studentDates: {},
     studentCourseSelections: {},
     studentFeeCodes: {},
@@ -488,6 +608,15 @@ function UploadStep({ active, children, complete, title }) {
 function StudentsCoursesPage() {
   const navigate = useNavigate();
   const inputRef = useRef(null);
+  const autoSaveInFlightRef = useRef(false);
+  const autoSaveQueuedRef = useRef(false);
+  const autoSaveRetryTimerRef = useRef(null);
+  const autoSaveTimerRef = useRef(null);
+  const branchFeeOptionsLoadedRef = useRef(false);
+  const dirtyVersionRef = useRef(0);
+  const latestAutoSaveDataRef = useRef(null);
+  const runAutoSaveRef = useRef(null);
+  const savedVersionRef = useRef(0);
   const [authStatus, setAuthStatus] = useState(auth ? "checking" : "error");
   const [currentUser, setCurrentUser] = useState(null);
   const [workspace, setWorkspace] = useState(null);
@@ -516,11 +645,20 @@ function StudentsCoursesPage() {
   const [dateDrafts, setDateDrafts] = useState({});
   const [selectedInvoiceRowId, setSelectedInvoiceRowId] = useState("");
   const [invoicePreviewOpen, setInvoicePreviewOpen] = useState(false);
+  const [attendancePreviewTarget, setAttendancePreviewTarget] = useState(null);
+  const [invoiceNoticeError, setInvoiceNoticeError] = useState("");
+  const [invoiceNoticeStatus, setInvoiceNoticeStatus] = useState("idle");
+  const [lastGeneratedInvoiceId, setLastGeneratedInvoiceId] = useState("");
+  const [studentInvoiceHistory, setStudentInvoiceHistory] = useState([]);
+  const [studentInvoiceHistoryStatus, setStudentInvoiceHistoryStatus] =
+    useState("idle");
   const [classModalOpen, setClassModalOpen] = useState(false);
+  const [studentDeleteTarget, setStudentDeleteTarget] = useState(null);
   const [studentModalOpen, setStudentModalOpen] = useState(false);
   const [dateModalCourseId, setDateModalCourseId] = useState("");
   const [feeModalOpen, setFeeModalOpen] = useState(false);
   const [dismissedDoubleCourseRows, setDismissedDoubleCourseRows] = useState([]);
+  const [savedLoadBranchId, setSavedLoadBranchId] = useState("");
   const [savedLoadStatus, setSavedLoadStatus] = useState("idle");
   const [saveStatus, setSaveStatus] = useState("idle");
   const [saveError, setSaveError] = useState("");
@@ -566,6 +704,11 @@ function StudentsCoursesPage() {
         console.error("Unable to load students workspace:", error);
 
         if (active) {
+          if (isOrganizationSetupRequiredError(error)) {
+            navigate("/organization-setup", { replace: true });
+            return;
+          }
+
           setLoadError(getWorkspaceErrorMessage(error));
           setAuthStatus("error");
         }
@@ -576,7 +719,7 @@ function StudentsCoursesPage() {
       active = false;
       unsubscribe();
     };
-  }, []);
+  }, [navigate]);
 
   const canViewStudents = workspace?.member?.permissions?.canViewStudents;
   const canManageBranches =
@@ -594,6 +737,30 @@ function StudentsCoursesPage() {
     [activeBranchId, branchOptions],
   );
   const hasSelectedBranch = Boolean(selectedBranch?.id);
+  const savedWorkspaceReadyForBranch =
+    hasSelectedBranch &&
+    savedLoadStatus === "ready" &&
+    savedLoadBranchId === activeBranchId;
+  const savedWorkspaceErrorForBranch =
+    hasSelectedBranch &&
+    savedLoadStatus === "error" &&
+    savedLoadBranchId === activeBranchId;
+  const savedWorkspaceLoading =
+    hasSelectedBranch &&
+    !savedWorkspaceReadyForBranch &&
+    !savedWorkspaceErrorForBranch;
+  const hasLoadedResult =
+    hasSelectedBranch && !savedWorkspaceLoading && Boolean(result);
+  const pageTitle = savedWorkspaceLoading
+    ? "正在載入學生收費資料"
+    : hasLoadedResult
+      ? "本期學生收費資料"
+      : "建立第一份學生收費資料";
+  const pageDescription = savedWorkspaceLoading
+    ? "正在從 Firebase 讀取目前分校的班級、學生、雜項與通知單資料。"
+    : hasLoadedResult
+      ? "資料已在系統中，日常工作以班級、學生、雜項與通知單為主。修改後會自動儲存。"
+      : "第一次可以匯入學費袋 Excel，也可以直接建立班級、學生與雜項表。建立後系統會自動儲存。";
   const selectedClassSheet = useMemo(() => {
     if (!result?.classSheets.length) {
       return null;
@@ -607,6 +774,15 @@ function StudentsCoursesPage() {
   const selectedClassDraft = selectedClassSheet
     ? invoiceState?.classes[selectedClassSheet.id]
     : null;
+  const courseAttendanceEnabledMap = Object.fromEntries(
+    (selectedClassSheet?.courseBlocks || []).map((course) => [
+      course.id,
+      isCourseAttendanceGroupsEnabled(selectedClassDraft, course.id),
+    ]),
+  );
+  const hasCourseAttendanceGroupsEnabled = Object.values(
+    courseAttendanceEnabledMap,
+  ).some(Boolean);
   const dateModalCourse =
     selectedClassSheet?.courseBlocks.find(
       (course) => course.id === dateModalCourseId,
@@ -633,6 +809,7 @@ function StudentsCoursesPage() {
   const selectedInvoiceRow =
     invoiceRows.find((row) => row.id === selectedInvoiceRowId) ||
     invoiceRows[0];
+  const selectedStudentAccountId = selectedInvoiceRow?.studentId || "";
   const workspaceTotals = useMemo(
     () => ({
       activeClassTotal: invoiceRows.reduce(
@@ -647,6 +824,33 @@ function StudentsCoursesPage() {
   );
 
   useEffect(() => {
+    latestAutoSaveDataRef.current = {
+      activeBranchId,
+      activeClassId,
+      dismissedDoubleCourseRows,
+      feeOptions,
+      invoiceState,
+      orgId: workspace?.activeOrgId || "",
+      result,
+      selectedBranch,
+      savedByUid: currentUser?.uid || "",
+      selectedInvoiceRowId: selectedInvoiceRow?.id || selectedInvoiceRowId,
+    };
+  }, [
+    activeBranchId,
+    activeClassId,
+    currentUser?.uid,
+    dismissedDoubleCourseRows,
+    feeOptions,
+    invoiceState,
+    result,
+    selectedBranch,
+    selectedInvoiceRow?.id,
+    selectedInvoiceRowId,
+    workspace?.activeOrgId,
+  ]);
+
+  useEffect(() => {
     if (
       authStatus !== "ready" ||
       !canViewStudents ||
@@ -657,70 +861,115 @@ function StudentsCoursesPage() {
     }
 
     let active = true;
+    const resetWorkspace = () => {
+      setResult(null);
+      setInvoiceState(null);
+      setFeeOptions(withAutomaticFeeOptions([]));
+      setActiveClassId("");
+      setSelectedInvoiceRowId("");
+      setDismissedDoubleCourseRows([]);
+      setShowCompactImport(false);
+      setDateModalCourseId("");
+      setAttendancePreviewTarget(null);
+      setStudentDeleteTarget(null);
+      setStudentModalOpen(false);
+      setFeeModalOpen(false);
+      setSaveStatus("idle");
+      setSaveError("");
+      setHasUnsavedChanges(false);
+      dirtyVersionRef.current = 0;
+      savedVersionRef.current = 0;
+      autoSaveQueuedRef.current = false;
+      setImportStatus("idle");
+    };
+    const applySavedWorkspace = (saved) => {
+      const firstClass = saved.result.classSheets[0];
+      const activeClass =
+        saved.result.classSheets.find(
+          (sheet) => sheet.id === saved.activeClassId,
+        ) || firstClass;
+      const firstRow = activeClass?.studentRows[0];
+      const syncedVersion =
+        saved.savedByClientId === STUDENTS_COURSES_CLIENT_ID
+          ? Number(saved.clientSaveVersion) || dirtyVersionRef.current
+          : dirtyVersionRef.current;
 
-    Promise.resolve()
-      .then(() => {
-        if (!active) {
-          return null;
-        }
+      setResult(saved.result);
+      setInvoiceState(saved.invoiceState);
+      if (!branchFeeOptionsLoadedRef.current) {
+        setFeeOptions(withAutomaticFeeOptions(saved.feeOptions));
+      }
+      setActiveClassId(activeClass?.id || "");
+      setSelectedInvoiceRowId(saved.selectedInvoiceRowId || firstRow?.id || "");
+      setDismissedDoubleCourseRows(saved.dismissedDoubleCourseRows);
+      setSaveStatus("saved");
+      setHasUnsavedChanges(false);
+      dirtyVersionRef.current = syncedVersion;
+      savedVersionRef.current = syncedVersion;
+      setImportStatus("ready");
+    };
 
-        setSavedLoadStatus("loading");
-        setResult(null);
-        setInvoiceState(null);
-        setFeeOptions(withAutomaticFeeOptions([]));
-        setActiveClassId("");
-        setSelectedInvoiceRowId("");
-        setDismissedDoubleCourseRows([]);
-        setShowCompactImport(false);
-        setDateModalCourseId("");
-        setStudentModalOpen(false);
-        setFeeModalOpen(false);
-        setSaveStatus("idle");
-        setSaveError("");
-        setHasUnsavedChanges(false);
-        setImportStatus("idle");
+    let unsubscribe = () => {};
 
-        return loadCurrentBillingWorkspace(workspace.activeOrgId, activeBranchId, {
-          fallbackToOrganizationWorkspace:
-            activeBranchId === branchOptions[0]?.id,
-        });
-      })
-      .then((saved) => {
-        if (!active) {
-          return;
-        }
+    Promise.resolve().then(() => {
+      if (!active) {
+        return;
+      }
 
-        if (saved) {
-          const firstClass = saved.result.classSheets[0];
-          const activeClass =
-            saved.result.classSheets.find(
-              (sheet) => sheet.id === saved.activeClassId,
-            ) || firstClass;
-          const firstRow = activeClass?.studentRows[0];
+      setSavedLoadStatus("loading");
+      setSavedLoadBranchId(activeBranchId);
+      resetWorkspace();
 
-          setResult(saved.result);
-          setInvoiceState(saved.invoiceState);
-          setFeeOptions(withAutomaticFeeOptions(saved.feeOptions));
-          setActiveClassId(activeClass?.id || "");
-          setSelectedInvoiceRowId(saved.selectedInvoiceRowId || firstRow?.id || "");
-          setDismissedDoubleCourseRows(saved.dismissedDoubleCourseRows);
-          setSaveStatus("saved");
-          setHasUnsavedChanges(false);
-          setImportStatus("ready");
-        }
+      unsubscribe = subscribeCurrentBillingWorkspace({
+        branchId: activeBranchId,
+        fallbackToOrganizationWorkspace: activeBranchId === branchOptions[0]?.id,
+        onChange: (saved) => {
+          if (!active) {
+            return;
+          }
 
-        setSavedLoadStatus("ready");
-      })
-      .catch((error) => {
-        console.error("Unable to load saved billing workspace:", error);
+          setSavedLoadBranchId(activeBranchId);
+          setSavedLoadStatus("ready");
 
-        if (active) {
-          setSavedLoadStatus("error");
-        }
+          if (!saved) {
+            resetWorkspace();
+            return;
+          }
+
+          if (saved.metadata?.hasPendingWrites) {
+            return;
+          }
+
+          const isOwnSnapshot =
+            saved.savedByClientId === STUDENTS_COURSES_CLIENT_ID;
+          const localPending =
+            autoSaveInFlightRef.current ||
+            dirtyVersionRef.current !== savedVersionRef.current;
+          const olderOwnSnapshot =
+            isOwnSnapshot &&
+            Number(saved.clientSaveVersion || 0) < dirtyVersionRef.current;
+
+          if (olderOwnSnapshot || (!isOwnSnapshot && localPending)) {
+            return;
+          }
+
+          applySavedWorkspace(saved);
+        },
+        onError: (error) => {
+          console.error("Unable to listen to saved billing workspace:", error);
+
+          if (active) {
+            setSavedLoadBranchId(activeBranchId);
+            setSavedLoadStatus("error");
+          }
+        },
+        orgId: workspace.activeOrgId,
       });
+    });
 
     return () => {
       active = false;
+      unsubscribe();
     };
   }, [
     activeBranchId,
@@ -732,9 +981,98 @@ function StudentsCoursesPage() {
 
   useEffect(() => {
     if (
+      authStatus !== "ready" ||
+      !canViewStudents ||
+      !workspace?.activeOrgId ||
+      !activeBranchId
+    ) {
+      return undefined;
+    }
+
+    branchFeeOptionsLoadedRef.current = false;
+
+    return subscribeBranchFeeOptions({
+      branchId: activeBranchId,
+      onChange: (saved) => {
+        if (saved.metadata?.hasPendingWrites) {
+          return;
+        }
+
+        branchFeeOptionsLoadedRef.current = saved.exists;
+
+        if (saved.exists) {
+          setFeeOptions(withAutomaticFeeOptions(saved.feeOptions));
+        }
+      },
+      onError: (error) => {
+        console.error("Unable to listen to branch fee options:", error);
+        setSaveError("無法載入分校雜項表。請確認 Firestore 權限。");
+        setSaveStatus("error");
+      },
+      orgId: workspace.activeOrgId,
+    });
+  }, [
+    activeBranchId,
+    authStatus,
+    canViewStudents,
+    workspace?.activeOrgId,
+  ]);
+
+  useEffect(() => {
+    let active = true;
+    let unsubscribe = () => {};
+
+    Promise.resolve().then(() => {
+      if (!active) {
+        return;
+      }
+
+      if (
+        !invoicePreviewOpen ||
+        !workspace?.activeOrgId ||
+        !selectedStudentAccountId
+      ) {
+        setStudentInvoiceHistory([]);
+        setStudentInvoiceHistoryStatus("idle");
+        return;
+      }
+
+      setStudentInvoiceHistoryStatus("loading");
+      unsubscribe = subscribeStudentInvoices({
+        onChange: (records) => {
+          if (!active) {
+            return;
+          }
+
+          setStudentInvoiceHistory(records);
+          setStudentInvoiceHistoryStatus("ready");
+        },
+        onError: (error) => {
+          console.error("Unable to listen to student invoices:", error);
+
+          if (active) {
+            setStudentInvoiceHistory([]);
+            setStudentInvoiceHistoryStatus("error");
+          }
+        },
+        orgId: workspace.activeOrgId,
+        studentId: selectedStudentAccountId,
+      });
+    });
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [invoicePreviewOpen, selectedStudentAccountId, workspace?.activeOrgId]);
+
+  useEffect(() => {
+    if (
       !invoicePreviewOpen &&
+      !attendancePreviewTarget &&
       !classModalOpen &&
       !branchModalOpen &&
+      !studentDeleteTarget &&
       !studentModalOpen &&
       !dateModalCourseId &&
       !feeModalOpen
@@ -745,6 +1083,16 @@ function StudentsCoursesPage() {
     const originalOverflow = document.body.style.overflow;
     const handleKeyDown = (event) => {
       if (event.key === "Escape") {
+        if (studentDeleteTarget) {
+          setStudentDeleteTarget(null);
+          return;
+        }
+
+        if (attendancePreviewTarget) {
+          setAttendancePreviewTarget(null);
+          return;
+        }
+
         if (dateModalCourseId) {
           setDateModalCourseId("");
           return;
@@ -783,18 +1131,180 @@ function StudentsCoursesPage() {
     };
   }, [
     classModalOpen,
+    attendancePreviewTarget,
     branchModalOpen,
     dateModalCourseId,
     feeModalOpen,
     invoicePreviewOpen,
+    studentDeleteTarget,
     studentModalOpen,
   ]);
 
   const markWorkspaceDirty = () => {
+    dirtyVersionRef.current += 1;
     setHasUnsavedChanges(true);
     setSaveStatus("idle");
     setSaveError("");
   };
+
+  const persistBranchFeeOptions = async (nextFeeOptions) => {
+    if (!activeBranchId || !workspace?.activeOrgId) {
+      return;
+    }
+
+    setSaveStatus("saving");
+    setSaveError("");
+
+    try {
+      await saveBranchFeeOptions({
+        branchId: activeBranchId,
+        feeOptions: nextFeeOptions,
+        orgId: workspace.activeOrgId,
+        savedByClientId: STUDENTS_COURSES_CLIENT_ID,
+        savedByUid: currentUser?.uid || "",
+      });
+      setSaveStatus("saved");
+    } catch (error) {
+      console.error("Unable to save branch fee options:", error);
+      setSaveError("雜項表自動儲存失敗。請確認網路與 Firestore 權限。");
+      setSaveStatus("error");
+    }
+  };
+
+  const runAutoSave = useCallback(async () => {
+    const snapshot = latestAutoSaveDataRef.current;
+
+    if (
+      !snapshot?.result ||
+      !snapshot.invoiceState ||
+      !snapshot.activeBranchId ||
+      !snapshot.orgId
+    ) {
+      return;
+    }
+
+    if (autoSaveInFlightRef.current) {
+      autoSaveQueuedRef.current = true;
+      return;
+    }
+
+    const saveVersion = dirtyVersionRef.current;
+
+    if (saveVersion === savedVersionRef.current) {
+      return;
+    }
+
+    autoSaveInFlightRef.current = true;
+    autoSaveQueuedRef.current = false;
+    setSaveStatus("saving");
+    setSaveError("");
+
+    try {
+      await saveCurrentBillingWorkspace({
+        activeClassId: snapshot.activeClassId,
+        branchId: snapshot.activeBranchId,
+        clientSaveVersion: saveVersion,
+        dismissedDoubleCourseRows: snapshot.dismissedDoubleCourseRows,
+        feeOptions: snapshot.feeOptions,
+        invoiceState: snapshot.invoiceState,
+        orgId: snapshot.orgId,
+        result: snapshot.result,
+        savedByClientId: STUDENTS_COURSES_CLIENT_ID,
+        savedByUid: snapshot.savedByUid,
+        selectedInvoiceRowId: snapshot.selectedInvoiceRowId,
+      });
+      await syncStudentAccountsFromClassSheets({
+        branch: snapshot.selectedBranch,
+        classSheets: snapshot.result.classSheets,
+        orgId: snapshot.orgId,
+        savedByUid: snapshot.savedByUid,
+      });
+
+      if (dirtyVersionRef.current === saveVersion) {
+        savedVersionRef.current = saveVersion;
+        setHasUnsavedChanges(false);
+        setSaveStatus("saved");
+      } else {
+        autoSaveQueuedRef.current = true;
+        setSaveStatus("idle");
+      }
+    } catch (error) {
+      console.error("Unable to auto-save billing workspace:", error);
+      setSaveError("自動儲存失敗。請確認網路與 Firestore 權限。");
+      setSaveStatus("error");
+    } finally {
+      autoSaveInFlightRef.current = false;
+
+      if (
+        autoSaveQueuedRef.current &&
+        dirtyVersionRef.current !== savedVersionRef.current
+      ) {
+        autoSaveQueuedRef.current = false;
+        if (autoSaveRetryTimerRef.current) {
+          window.clearTimeout(autoSaveRetryTimerRef.current);
+        }
+
+        autoSaveRetryTimerRef.current = window.setTimeout(() => {
+          autoSaveRetryTimerRef.current = null;
+          void runAutoSaveRef.current?.();
+        }, 500);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    runAutoSaveRef.current = runAutoSave;
+
+    return () => {
+      if (runAutoSaveRef.current === runAutoSave) {
+        runAutoSaveRef.current = null;
+      }
+
+      if (autoSaveRetryTimerRef.current) {
+        window.clearTimeout(autoSaveRetryTimerRef.current);
+        autoSaveRetryTimerRef.current = null;
+      }
+    };
+  }, [runAutoSave]);
+
+  useEffect(() => {
+    if (
+      !hasUnsavedChanges ||
+      !result ||
+      !invoiceState ||
+      !activeBranchId ||
+      !workspace?.activeOrgId
+    ) {
+      return undefined;
+    }
+
+    if (autoSaveTimerRef.current) {
+      window.clearTimeout(autoSaveTimerRef.current);
+    }
+
+    autoSaveTimerRef.current = window.setTimeout(() => {
+      autoSaveTimerRef.current = null;
+      void runAutoSave();
+    }, 700);
+
+    return () => {
+      if (autoSaveTimerRef.current) {
+        window.clearTimeout(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = null;
+      }
+    };
+  }, [
+    activeBranchId,
+    dismissedDoubleCourseRows,
+    feeOptions,
+    hasUnsavedChanges,
+    invoiceState,
+    result,
+    runAutoSave,
+    selectedInvoiceRow?.id,
+    selectedInvoiceRowId,
+    workspace?.activeOrgId,
+  ]);
 
   const updateSelectedClassDraft = (updater) => {
     if (!selectedClassSheet) {
@@ -834,6 +1344,7 @@ function StudentsCoursesPage() {
     setFeeOptions(withAutomaticFeeOptions([]));
     setActiveClassId("");
     setSelectedInvoiceRowId("");
+    setAttendancePreviewTarget(null);
     setDismissedDoubleCourseRows([]);
     setSaveStatus("idle");
     setSaveError("");
@@ -860,15 +1371,17 @@ function StudentsCoursesPage() {
       const organized = await organizeTuitionBagFile(file);
       const firstClass = organized.classSheets[0];
       const firstRow = firstClass?.studentRows[0];
+      const nextFeeOptions = withAutomaticFeeOptions(organized.feeItems);
 
       setResult(organized);
       setInvoiceState(createInvoiceState(organized));
-      setFeeOptions(withAutomaticFeeOptions(organized.feeItems));
+      setFeeOptions(nextFeeOptions);
       setActiveClassId(firstClass?.id || "");
       setSelectedInvoiceRowId(firstRow?.id || "");
       setImportStatus("ready");
       setShowCompactImport(false);
-      setHasUnsavedChanges(true);
+      await persistBranchFeeOptions(nextFeeOptions);
+      markWorkspaceDirty();
     } catch (error) {
       console.error("Unable to organize tuition bag:", error);
       setImportError("無法解析這份 Excel。請確認檔案格式是否為學費袋。");
@@ -889,7 +1402,7 @@ function StudentsCoursesPage() {
 
     if (
       hasUnsavedChanges &&
-      !window.confirm("目前分校有尚未儲存的變更。確定要切換分校嗎？")
+      !window.confirm("目前分校仍有尚未完成的自動儲存。確定要切換分校嗎？")
     ) {
       return;
     }
@@ -1033,7 +1546,8 @@ function StudentsCoursesPage() {
     const studentNumber =
       studentForm.studentNumber.trim() ||
       String(selectedClassSheet.studentRows.length + 1);
-    const rowId = `${selectedClassSheet.id}-${studentNumber}-${studentName}-${Date.now()}`;
+    const rowId = createStudentRowId(selectedClassSheet.id);
+    const studentId = createStudentAccountId();
     const courseSelections = Object.fromEntries(
       selectedClassSheet.courseBlocks.map((course) => [course.id, true]),
     );
@@ -1046,7 +1560,7 @@ function StudentsCoursesPage() {
     const nextRow = {
       id: rowId,
       rowNumber: selectedClassSheet.studentRows.length + 2,
-      studentId: rowId,
+      studentId,
       studentNumber,
       studentName,
       subjects: [
@@ -1086,6 +1600,20 @@ function StudentsCoursesPage() {
               {}),
             [rowId]: courseSelections,
           },
+          studentAttendanceGroupsByCourse: {
+            ...(current.classes[selectedClassSheet.id]
+              .studentAttendanceGroupsByCourse || {}),
+            ...Object.fromEntries(
+              selectedClassSheet.courseBlocks.map((course) => [
+                course.id,
+                {
+                  ...(current.classes[selectedClassSheet.id]
+                    .studentAttendanceGroupsByCourse?.[course.id] || {}),
+                  [rowId]: "A",
+                },
+              ]),
+            ),
+          },
           studentFeeCodes: {
             ...current.classes[selectedClassSheet.id].studentFeeCodes,
             [rowId]: [],
@@ -1103,34 +1631,131 @@ function StudentsCoursesPage() {
     markWorkspaceDirty();
   };
 
-  const handleSaveWorkspace = async () => {
-    if (!result || !invoiceState || !activeBranchId || saveStatus === "saving") {
+  const handleDeleteStudent = (row) => {
+    if (!selectedClassSheet || !selectedClassDraft) {
       return;
     }
 
-    setSaveStatus("saving");
-    setSaveError("");
+    const remainingRows = selectedClassSheet.studentRows
+      .filter((studentRow) => studentRow.id !== row.id)
+      .map((studentRow, index) => ({
+        ...studentRow,
+        rowNumber: index + 2,
+      }));
+    const nextSelectedRowId =
+      selectedInvoiceRowId === row.id
+        ? remainingRows[0]?.id || ""
+        : selectedInvoiceRowId;
 
-    try {
-      await saveCurrentBillingWorkspace({
-        activeClassId,
-        branchId: activeBranchId,
-        dismissedDoubleCourseRows,
-        feeOptions,
-        invoiceState,
-        orgId: workspace.activeOrgId,
-        result,
-        savedByUid: currentUser?.uid,
-        selectedInvoiceRowId: selectedInvoiceRow?.id || selectedInvoiceRowId,
-      });
+    setResult((current) =>
+      refreshResultSummary({
+        ...current,
+        classSheets: current.classSheets.map((sheet) =>
+          sheet.id === selectedClassSheet.id
+            ? {
+                ...sheet,
+                studentRows: remainingRows,
+                studentCount: remainingRows.length,
+              }
+            : sheet,
+        ),
+      }),
+    );
+    setInvoiceState((current) => {
+      if (!current) {
+        return current;
+      }
 
-      setHasUnsavedChanges(false);
-      setSaveStatus("saved");
-    } catch (error) {
-      console.error("Unable to save billing workspace:", error);
-      setSaveError("無法儲存到系統。請確認網路與 Firestore 權限後再試一次。");
-      setSaveStatus("error");
+      const classDraft = current.classes[selectedClassSheet.id];
+
+      if (!classDraft) {
+        return current;
+      }
+
+      return {
+        ...current,
+        classes: {
+          ...current.classes,
+          [selectedClassSheet.id]: {
+            ...classDraft,
+            studentCourseSelections: withoutRecordKey(
+              classDraft.studentCourseSelections,
+              row.id,
+            ),
+            studentAttendanceGroups: withoutRecordKey(
+              classDraft.studentAttendanceGroups,
+              row.id,
+            ),
+            studentAttendanceGroupsByCourse: withoutNestedRecordKey(
+              classDraft.studentAttendanceGroupsByCourse,
+              row.id,
+            ),
+            studentCustomFees: withoutRecordKey(
+              classDraft.studentCustomFees,
+              row.id,
+            ),
+            studentDates: withoutRecordKey(classDraft.studentDates, row.id),
+            studentFeeCodes: withoutRecordKey(
+              classDraft.studentFeeCodes,
+              row.id,
+            ),
+          },
+        },
+      };
+    });
+    setDismissedDoubleCourseRows((current) =>
+      current.filter((rowId) => rowId !== row.id),
+    );
+    setSelectedInvoiceRowId(nextSelectedRowId);
+    setStudentDeleteTarget(null);
+    markWorkspaceDirty();
+  };
+
+  const toggleCourseAttendanceGroups = (courseId) => {
+    if (!selectedClassSheet || !selectedClassDraft || !courseId) {
+      return;
     }
+
+    markWorkspaceDirty();
+    updateSelectedClassDraft((classDraft) => ({
+      ...classDraft,
+      attendanceGroupEnabledByCourse: {
+        ...createCourseAttendanceEnabledMap(selectedClassSheet),
+        ...(classDraft.attendanceGroupEnabledByCourse || {}),
+        [courseId]: !isCourseAttendanceGroupsEnabled(classDraft, courseId),
+      },
+      studentAttendanceGroupsByCourse: {
+        ...(classDraft.studentAttendanceGroupsByCourse || {}),
+        [courseId]: {
+          ...createStudentAttendanceGroupsByCourse(selectedClassSheet)[courseId],
+          ...(classDraft.studentAttendanceGroupsByCourse?.[courseId] || {}),
+        },
+      },
+    }));
+  };
+
+  const updateStudentCourseAttendanceGroup = (rowId, courseId, group) => {
+    if (!selectedClassSheet || !courseId || !["A", "B"].includes(group)) {
+      return;
+    }
+
+    markWorkspaceDirty();
+    updateSelectedClassDraft((classDraft) => ({
+      ...classDraft,
+      attendanceGroupEnabledByCourse: {
+        ...createCourseAttendanceEnabledMap(selectedClassSheet),
+        ...(classDraft.attendanceGroupEnabledByCourse || {}),
+        [courseId]: true,
+      },
+      studentAttendanceGroupsByCourse: {
+        ...(classDraft.studentAttendanceGroupsByCourse || {}),
+        [courseId]: {
+          ...createStudentAttendanceGroupsByCourse(selectedClassSheet)[courseId],
+          ...(classDraft.studentAttendanceGroupsByCourse?.[courseId] || {}),
+          [rowId]: group,
+        },
+      },
+    }));
   };
 
   const addGlobalDate = (courseId) => {
@@ -1344,7 +1969,6 @@ function StudentsCoursesPage() {
       return;
     }
 
-    markWorkspaceDirty();
     const nextOption = {
       id: `fee-option-${code}`,
       rowNumber:
@@ -1358,16 +1982,18 @@ function StudentsCoursesPage() {
         ? [{ column: "備註", value: feeForm.details.trim() }]
         : [],
     };
-
-    setFeeOptions((current) => {
-      const withoutEdited = current.filter(
+    const nextFeeOptions = [
+      ...feeOptions.filter(
         (option) => option.code !== editingFeeCode && option.code !== code,
-      );
+      ),
+      nextOption,
+    ].sort(compareFeeOptions);
 
-      return [...withoutEdited, nextOption].sort(compareFeeOptions);
-    });
+    setFeeOptions(nextFeeOptions);
+    void persistBranchFeeOptions(nextFeeOptions);
 
     if (editingFeeCode && editingFeeCode !== code) {
+      markWorkspaceDirty();
       setInvoiceState((current) => {
         if (!current) {
           return current;
@@ -1411,8 +2037,15 @@ function StudentsCoursesPage() {
   };
 
   const deleteFeeOption = (code) => {
-    markWorkspaceDirty();
-    setFeeOptions((current) => current.filter((option) => option.code !== code));
+    const nextFeeOptions = feeOptions.filter((option) => option.code !== code);
+
+    setFeeOptions(nextFeeOptions);
+    void persistBranchFeeOptions(nextFeeOptions);
+
+    if (result && invoiceState) {
+      markWorkspaceDirty();
+    }
+
     setInvoiceState((current) => {
       if (!current) {
         return current;
@@ -1436,6 +2069,54 @@ function StudentsCoursesPage() {
         ),
       };
     });
+  };
+
+  const openInvoiceNoticeModal = (rowId = "") => {
+    if (rowId) {
+      setSelectedInvoiceRowId(rowId);
+    }
+
+    setInvoiceNoticeError("");
+    setInvoiceNoticeStatus("idle");
+    setLastGeneratedInvoiceId("");
+    setInvoicePreviewOpen(true);
+  };
+
+  const handleGenerateInvoiceNotice = async () => {
+    if (
+      !selectedInvoiceRow ||
+      !selectedClassSheet ||
+      !selectedBranch ||
+      !workspace?.activeOrgId ||
+      invoiceNoticeStatus === "saving"
+    ) {
+      return;
+    }
+
+    setInvoiceNoticeError("");
+    setInvoiceNoticeStatus("saving");
+
+    try {
+      const saved = await saveStudentInvoiceNotice({
+        branch: selectedBranch,
+        classSheet: selectedClassSheet,
+        generatedByEmail: currentUser?.email || "",
+        generatedByUid: currentUser?.uid || "",
+        invoice: selectedInvoiceRow.invoice,
+        organization: workspace.organization,
+        orgId: workspace.activeOrgId,
+        studentRow: selectedInvoiceRow,
+      });
+
+      setLastGeneratedInvoiceId(saved.invoiceId);
+      setInvoiceNoticeStatus("saved");
+    } catch (error) {
+      console.error("Unable to generate invoice notice:", error);
+      setInvoiceNoticeError(
+        "無法產生繳費通知單。請確認網路與 Firestore 權限後再試一次。",
+      );
+      setInvoiceNoticeStatus("error");
+    }
   };
 
   const renderClassCourseFields = ({ autoFocusClassName = false } = {}) => (
@@ -1585,7 +2266,66 @@ function StudentsCoursesPage() {
     </section>
   );
 
-  const renderInvoicePrintArea = () => {
+  const renderStudentInvoiceHistory = () => (
+    <section className="student-invoice-history">
+      <div className="student-invoice-history-heading">
+        <div>
+          <p className="dashboard-kicker">學生通知單紀錄</p>
+          <h3>已產生的繳費通知單</h3>
+        </div>
+        <span>{studentInvoiceHistory.length}</span>
+      </div>
+
+      {studentInvoiceHistoryStatus === "loading" ? (
+        <p className="invoice-history-state">正在載入通知單紀錄...</p>
+      ) : null}
+
+      {studentInvoiceHistoryStatus === "error" ? (
+        <p className="invoice-history-state error">
+          無法載入通知單紀錄。請確認 Firestore 權限。
+        </p>
+      ) : null}
+
+      {studentInvoiceHistoryStatus === "ready" &&
+      studentInvoiceHistory.length === 0 ? (
+        <p className="invoice-history-state">
+          此學生尚未有已產生的繳費通知單。
+        </p>
+      ) : null}
+
+      {studentInvoiceHistory.length ? (
+        <div className="student-invoice-history-list">
+          {studentInvoiceHistory.map((invoice) => (
+            <article
+              className={
+                invoice.id === lastGeneratedInvoiceId
+                  ? "student-invoice-history-item latest"
+                  : "student-invoice-history-item"
+              }
+              key={invoice.id}
+            >
+              <div>
+                <strong>{invoice.invoiceNumber}</strong>
+                <span>
+                  {invoice.sourceBranchSnapshot?.name || "未記錄分校"} ·{" "}
+                  {invoice.className || "未記錄班級"} ·{" "}
+                  {formatDateTime(invoice.issuedAtIso)}
+                </span>
+              </div>
+              <div>
+                <em className={`invoice-status-chip ${invoice.status || "unpaid"}`}>
+                  {getInvoiceStatusLabel(invoice.status)}
+                </em>
+                <strong>{formatCurrency(Number(invoice.balance ?? invoice.total) || 0)}</strong>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+
+  const renderInvoiceNoticePreview = () => {
     if (!selectedInvoiceRow || !selectedClassSheet) {
       return null;
     }
@@ -1594,7 +2334,7 @@ function StudentsCoursesPage() {
       <div className="invoice-print-area">
         <header>
           <p>{workspace.organization.name}</p>
-          <h2>收費通知單</h2>
+          <h2>繳費通知單</h2>
         </header>
         <div className="invoice-meta-grid">
           <span>班級：{selectedClassSheet.name}</span>
@@ -1643,7 +2383,71 @@ function StudentsCoursesPage() {
           </tfoot>
         </table>
         <p className="invoice-receipt-note">
-          請攜帶此通知單繳費。已於 ____ 月 ____ 日繳清，謝謝！
+          產生後會儲存在學生帳戶。列印、收款與收據請到每日收支處理。
+        </p>
+      </div>
+    );
+  };
+
+  const renderAttendanceRosterPreview = () => {
+    if (!selectedClassSheet || !selectedClassDraft || !attendancePreviewTarget) {
+      return null;
+    }
+
+    const course = selectedClassSheet.courseBlocks.find(
+      (item) => item.id === attendancePreviewTarget.courseId,
+    );
+
+    if (!course) {
+      return null;
+    }
+
+    const dateColumns = getAttendanceDateColumns(selectedClassDraft, course.id);
+    const groupedRows = invoiceRows.filter(
+      (row) =>
+        isStudentCourseSelected(selectedClassDraft, row.id, course) &&
+        getStudentCourseAttendanceGroup(selectedClassDraft, course.id, row.id) ===
+          attendancePreviewTarget.group,
+    );
+    const rowCount = Math.max(25, groupedRows.length);
+    const displayRows = Array.from(
+      { length: rowCount },
+      (_, index) => groupedRows[index] || null,
+    );
+
+    return (
+      <div className="invoice-print-area attendance-print-area">
+        <h2>互動文理點名單</h2>
+        <div className="attendance-roster-meta">
+          班級：{selectedClassSheet.name} {course.label}{" "}
+          {getAttendanceGroupLabel(attendancePreviewTarget.group)}
+          <span>班時間：</span>
+          <span>老師：</span>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>編號</th>
+              <th>姓名</th>
+              {dateColumns.map((column) => (
+                <th key={column.id}>{column.label}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {displayRows.map((row, index) => (
+              <tr key={row?.id || `blank-row-${index}`}>
+                <td>{index + 1}.</td>
+                <td>{row?.studentName || ""}</td>
+                {dateColumns.map((column) => (
+                  <td key={column.id} />
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="attendance-roster-note">
+          ※請假的同學，請老師盡快補課，將補課日期記錄在格子內。
         </p>
       </div>
     );
@@ -1748,14 +2552,8 @@ function StudentsCoursesPage() {
         <div className="import-hero">
           <div>
             <p className="dashboard-kicker">學生收費工作台</p>
-            <h1 id="students-title">
-              {result ? "本期學生收費資料" : "建立第一份學生收費資料"}
-            </h1>
-            <p>
-              {result
-                ? "資料已在系統中，日常工作以班級、學生、雜項與通知單為主。Excel 只保留為必要時重新匯入的工具。"
-                : "第一次可以匯入學費袋 Excel，也可以直接建立班級、學生與雜項表。儲存後下次會直接回到工作台。"}
-            </p>
+            <h1 id="students-title">{pageTitle}</h1>
+            <p>{pageDescription}</p>
           </div>
           <span>
             {workspace.organization.name}
@@ -1821,14 +2619,26 @@ function StudentsCoursesPage() {
           </section>
         ) : null}
 
-        {hasSelectedBranch && !result ? (
+        {hasSelectedBranch && savedWorkspaceLoading ? (
+          <section className="dashboard-message-panel inline branch-loading-panel">
+            <p className="dashboard-kicker">載入中</p>
+            <h1>正在讀取分校資料</h1>
+            <p>
+              正在確認
+              {selectedBranch ? `「${selectedBranch.name}」` : "目前分校"}
+              是否已有班級、學生與收費資料。
+            </p>
+          </section>
+        ) : null}
+
+        {hasSelectedBranch && !savedWorkspaceLoading && !result ? (
           <>
             <div className="import-stepper platform-stepper" aria-label="工作流程">
               <UploadStep active title="1. 建立資料">
                 匯入 Excel 或手動建立第一個班級。
               </UploadStep>
-              <UploadStep active={false} title="2. 儲存到系統">
-                儲存後重新整理也會保留資料。
+              <UploadStep active={false} title="2. 自動儲存">
+                匯入或修改後會自動儲存到目前分校。
               </UploadStep>
               <UploadStep active={false} title="3. 日常收費">
                 之後直接進入班級工作台。
@@ -1852,7 +2662,7 @@ function StudentsCoursesPage() {
                   ↑
                 </div>
                 <h2>第一次匯入學費袋 Excel</h2>
-                <p>如果已有 Excel，這是最快的初始化方式。匯入後請儲存到系統。</p>
+                <p>如果已有 Excel，這是最快的初始化方式。匯入後會自動儲存到目前分校。</p>
                 <button
                   className="upload-picker-button"
                   onClick={() => inputRef.current?.click()}
@@ -1863,10 +2673,7 @@ function StudentsCoursesPage() {
                 {importStatus === "parsing" ? (
                   <p className="upload-status">正在整理資料...</p>
                 ) : null}
-                {savedLoadStatus === "loading" ? (
-                  <p className="upload-status">正在載入已儲存的收費資料...</p>
-                ) : null}
-                {savedLoadStatus === "error" ? (
+                {savedWorkspaceErrorForBranch ? (
                   <p className="auth-error">
                     無法載入已儲存資料。仍可重新匯入 Excel。
                   </p>
@@ -1891,7 +2698,11 @@ function StudentsCoursesPage() {
           </>
         ) : null}
 
-        {hasSelectedBranch && result && selectedClassSheet && selectedClassDraft ? (
+        {hasSelectedBranch &&
+        !savedWorkspaceLoading &&
+        result &&
+        selectedClassSheet &&
+        selectedClassDraft ? (
           <section className="invoice-builder" aria-labelledby="invoice-title">
             <div className="result-heading workspace-heading">
               <div>
@@ -1909,7 +2720,7 @@ function StudentsCoursesPage() {
                   <strong>{result.summary.studentCount}</strong>
                 </article>
                 <article>
-                  <span>本班通知單</span>
+                  <span>本班學生</span>
                   <strong>{workspaceTotals.invoiceCount}</strong>
                 </article>
                 <article>
@@ -1923,23 +2734,11 @@ function StudentsCoursesPage() {
               </div>
               <div className="workspace-action-row">
                 <button
-                  className="save-workspace-button"
-                  disabled={saveStatus === "saving" || !hasUnsavedChanges}
-                  onClick={handleSaveWorkspace}
-                  type="button"
-                >
-                  {saveStatus === "saving"
-                    ? "儲存中..."
-                    : hasUnsavedChanges
-                      ? "儲存到系統"
-                      : "已儲存"}
-                </button>
-                <button
                   className="confirm-import-button"
-                  onClick={() => setInvoicePreviewOpen(true)}
+                  onClick={() => openInvoiceNoticeModal(selectedInvoiceRow?.id)}
                   type="button"
                 >
-                  列印通知單
+                  產生繳費通知單
                 </button>
                 <button
                   className="compact-import-button"
@@ -1950,13 +2749,15 @@ function StudentsCoursesPage() {
                 </button>
                 <p
                   className={`workspace-save-note ${
-                    hasUnsavedChanges ? "unsaved" : ""
+                    hasUnsavedChanges || saveStatus === "error" ? "unsaved" : ""
                   }`}
                 >
                   {saveError ||
-                    (hasUnsavedChanges
-                      ? "尚未儲存，重新整理後會回到上次儲存資料。"
-                      : "已儲存，重新整理後不需要再匯入 Excel。")}
+                    (saveStatus === "saving"
+                      ? "正在自動儲存..."
+                      : hasUnsavedChanges
+                        ? "等待自動儲存..."
+                        : "已自動儲存。重新整理後不需要再匯入 Excel。")}
                 </p>
               </div>
             </div>
@@ -2005,6 +2806,8 @@ function StudentsCoursesPage() {
                     setActiveClassId(sheet.id);
                     setSelectedInvoiceRowId(sheet.studentRows[0]?.id || "");
                     setDateModalCourseId("");
+                    setAttendancePreviewTarget(null);
+                    setStudentDeleteTarget(null);
                     setStudentModalOpen(false);
                   }}
                   type="button"
@@ -2054,7 +2857,13 @@ function StudentsCoursesPage() {
                   </div>
                 </div>
                 <div className="invoice-sheet-wrap">
-                  <table className="invoice-sheet-table">
+                  <table
+                    className={`invoice-sheet-table ${
+                      hasCourseAttendanceGroupsEnabled
+                        ? "attendance-enabled"
+                        : ""
+                    }`}
+                  >
                     <thead>
                       <tr>
                         <th>編號</th>
@@ -2064,14 +2873,54 @@ function StudentsCoursesPage() {
                           <th key={course.id}>
                             <div className="course-header-cell">
                               <span>{course.label}</span>
-                              <button
-                                aria-label={`修改 ${course.label} 全班日期`}
-                                onClick={() => setDateModalCourseId(course.id)}
-                                title={`修改 ${course.label} 全班日期`}
-                                type="button"
-                              >
-                                日
-                              </button>
+                              <div className="course-header-actions">
+                                <button
+                                  aria-label={`修改 ${course.label} 全班日期`}
+                                  onClick={() => setDateModalCourseId(course.id)}
+                                  title={`修改 ${course.label} 全班日期`}
+                                  type="button"
+                                >
+                                  日
+                                </button>
+                                <button
+                                  aria-pressed={
+                                    courseAttendanceEnabledMap[course.id]
+                                  }
+                                  className={
+                                    courseAttendanceEnabledMap[course.id]
+                                      ? "active-toggle"
+                                      : ""
+                                  }
+                                  onClick={() =>
+                                    toggleCourseAttendanceGroups(course.id)
+                                  }
+                                  title={
+                                    courseAttendanceEnabledMap[course.id]
+                                      ? `停用 ${course.label} A/B 分班`
+                                      : `啟用 ${course.label} A/B 分班`
+                                  }
+                                  type="button"
+                                >
+                                  AB
+                                </button>
+                                {courseAttendanceEnabledMap[course.id]
+                                  ? ATTENDANCE_GROUP_OPTIONS.map((option) => (
+                                      <button
+                                        key={option.value}
+                                        onClick={() =>
+                                          setAttendancePreviewTarget({
+                                            courseId: course.id,
+                                            group: option.value,
+                                          })
+                                        }
+                                        title={`產生 ${course.label}${option.label} 點名表`}
+                                        type="button"
+                                      >
+                                        {option.value}
+                                      </button>
+                                    ))
+                                  : null}
+                              </div>
                               <small>
                                 {(
                                   selectedClassDraft.globalDates[course.id] ||
@@ -2084,7 +2933,7 @@ function StudentsCoursesPage() {
                         ))}
                         <th>雜項</th>
                         <th>合計</th>
-                        <th>列印</th>
+                        <th>操作</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -2102,7 +2951,14 @@ function StudentsCoursesPage() {
                             key={row.id}
                           >
                             <td>{row.studentNumber}</td>
-                            <td>{row.studentName}</td>
+                            <td>
+                              <span className="student-name-cell">
+                                <strong>{row.studentName}</strong>
+                                <em title={`學生唯一 ID：${row.studentId}`}>
+                                  ID {getShortStudentId(row.studentId)}
+                                </em>
+                              </span>
+                            </td>
                             <td>
                               <div
                                 aria-label={`${row.studentName} 科目`}
@@ -2155,9 +3011,49 @@ function StudentsCoursesPage() {
                               };
 
                               return (
-                                <td key={course.id}>
+                                <td className="course-date-cell" key={course.id}>
                                   {courseSelected ? (
                                     <>
+                                      {courseAttendanceEnabledMap[course.id] ? (
+                                        <div className="course-attendance-row">
+                                          <span>分班</span>
+                                          <div
+                                            aria-label={`${row.studentName} ${course.label} 分班`}
+                                            className="attendance-group-toggle"
+                                          >
+                                            {ATTENDANCE_GROUP_OPTIONS.map(
+                                              (option) => {
+                                                const selected =
+                                                  getStudentCourseAttendanceGroup(
+                                                    selectedClassDraft,
+                                                    course.id,
+                                                    row.id,
+                                                  ) === option.value;
+
+                                                return (
+                                                  <button
+                                                    aria-pressed={selected}
+                                                    className={
+                                                      selected ? "active" : ""
+                                                    }
+                                                    key={option.value}
+                                                    onClick={() =>
+                                                      updateStudentCourseAttendanceGroup(
+                                                        row.id,
+                                                        course.id,
+                                                        option.value,
+                                                      )
+                                                    }
+                                                    type="button"
+                                                  >
+                                                    {option.value}
+                                                  </button>
+                                                );
+                                              },
+                                            )}
+                                          </div>
+                                        </div>
+                                      ) : null}
                                       {visibleDates.length ? (
                                         <div className="date-toggle-grid">
                                           {visibleDates.map((date) => (
@@ -2241,20 +3137,36 @@ function StudentsCoursesPage() {
                               <strong>{formatCurrency(row.invoice.total)}</strong>
                             </td>
                             <td>
-                              <button
-                                className="table-action-button"
-                                onClick={() => {
-                                  setSelectedInvoiceRowId(row.id);
-                                  setInvoicePreviewOpen(true);
-                                }}
-                                type="button"
-                              >
-                                預覽
-                              </button>
+                              <div className="student-row-actions">
+                                <button
+                                  className="table-action-button"
+                                  onClick={() => openInvoiceNoticeModal(row.id)}
+                                  type="button"
+                                >
+                                  預覽
+                                </button>
+                                <button
+                                  className="table-action-button danger-table-action"
+                                  onClick={() => setStudentDeleteTarget(row)}
+                                  type="button"
+                                >
+                                  刪除
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );
                       })}
+                      {!invoiceRows.length ? (
+                        <tr>
+                          <td
+                            className="empty-student-row"
+                            colSpan={selectedClassSheet.courseBlocks.length + 6}
+                          >
+                            這個班級尚未有學生。請按右上方「+ 學生」加入第一位學生。
+                          </td>
+                        </tr>
+                      ) : null}
                     </tbody>
                   </table>
                 </div>
@@ -2436,6 +3348,69 @@ function StudentsCoursesPage() {
             </section>
           </div>
         ) : null}
+        {studentDeleteTarget && selectedClassSheet ? (
+          <div
+            className="invoice-modal-backdrop"
+            onClick={() => setStudentDeleteTarget(null)}
+          >
+            <section
+              aria-labelledby="delete-student-modal-title"
+              aria-modal="true"
+              className="delete-student-modal"
+              onClick={(event) => event.stopPropagation()}
+              role="dialog"
+            >
+              <div className="invoice-modal-heading warning-modal-heading">
+                <div>
+                  <p className="dashboard-kicker">刪除學生</p>
+                  <h2 id="delete-student-modal-title">確認刪除此學生？</h2>
+                  <p>刪除後會從目前班級移除，並透過自動儲存更新資料庫。</p>
+                </div>
+                <button
+                  className="modal-close-icon"
+                  onClick={() => setStudentDeleteTarget(null)}
+                  type="button"
+                >
+                  關閉
+                </button>
+              </div>
+
+              <div className="delete-warning-body">
+                <span aria-hidden="true" className="delete-warning-icon">
+                  !
+                </span>
+                <div className="delete-warning-copy">
+                  <strong>{studentDeleteTarget.studentName}</strong>
+                  <span>
+                    {selectedClassSheet.name} · 編號{" "}
+                    {studentDeleteTarget.studentNumber || "未設定"}
+                  </span>
+                  <p>
+                    這會移除此學生在本班的科目選取、課程日期、雜項套用與本期通知單資料。
+                    如果只是暫時不收費，請取消科目或雜項，不需要刪除學生。
+                  </p>
+                </div>
+              </div>
+
+              <div className="modal-form-actions delete-modal-actions">
+                <button
+                  className="danger-modal-button"
+                  onClick={() => handleDeleteStudent(studentDeleteTarget)}
+                  type="button"
+                >
+                  刪除學生
+                </button>
+                <button
+                  className="secondary-modal-button"
+                  onClick={() => setStudentDeleteTarget(null)}
+                  type="button"
+                >
+                  取消
+                </button>
+              </div>
+            </section>
+          </div>
+        ) : null}
         {dateModalCourse && selectedClassDraft ? (
           <div
             className="invoice-modal-backdrop"
@@ -2540,6 +3515,49 @@ function StudentsCoursesPage() {
             </section>
           </div>
         ) : null}
+        {attendancePreviewTarget && selectedClassSheet ? (
+          <div
+            className="invoice-modal-backdrop"
+            onClick={() => setAttendancePreviewTarget(null)}
+          >
+            <section
+              aria-labelledby="attendance-modal-title"
+              aria-modal="true"
+              className="invoice-preview-modal attendance-roster-modal"
+              onClick={(event) => event.stopPropagation()}
+              role="dialog"
+            >
+              <div className="invoice-modal-heading no-print">
+                <div>
+                  <p className="dashboard-kicker">點名表</p>
+                  <h2 id="attendance-modal-title">
+                    {selectedClassSheet.name}{" "}
+                    {selectedClassSheet.courseBlocks.find(
+                      (course) => course.id === attendancePreviewTarget.courseId,
+                    )?.label || "課程"}{" "}
+                    {getAttendanceGroupLabel(attendancePreviewTarget.group)}
+                  </h2>
+                  <p>
+                    日期欄使用此課程已設定的全班日期，老師欄位先保留空白。
+                  </p>
+                </div>
+                <div className="invoice-modal-actions">
+                  <button onClick={() => window.print()} type="button">
+                    列印
+                  </button>
+                  <button
+                    className="secondary-modal-button"
+                    onClick={() => setAttendancePreviewTarget(null)}
+                    type="button"
+                  >
+                    關閉
+                  </button>
+                </div>
+              </div>
+              {renderAttendanceRosterPreview()}
+            </section>
+          </div>
+        ) : null}
         {invoicePreviewOpen && selectedInvoiceRow ? (
           <div
             className="invoice-modal-backdrop"
@@ -2554,17 +3572,26 @@ function StudentsCoursesPage() {
             >
               <div className="invoice-modal-heading">
                 <div>
-                  <p className="dashboard-kicker">列印預覽</p>
+                  <p className="dashboard-kicker">產生繳費通知單</p>
                   <h2 id="invoice-modal-title">
                     {selectedInvoiceRow.studentName}
                   </h2>
                   <p>
-                    確認通知單內容後即可列印，關閉後會回到班級表格。
+                    確認內容後會儲存到學生帳戶；列印、收款與收據請到每日收支處理。
                   </p>
                 </div>
                 <div className="invoice-modal-actions">
-                  <button onClick={() => window.print()} type="button">
-                    列印
+                  <button
+                    disabled={
+                      invoiceNoticeStatus === "saving" ||
+                      !selectedStudentAccountId
+                    }
+                    onClick={handleGenerateInvoiceNotice}
+                    type="button"
+                  >
+                    {invoiceNoticeStatus === "saving"
+                      ? "產生中..."
+                      : "產生繳費通知單"}
                   </button>
                   <button
                     className="secondary-modal-button"
@@ -2575,7 +3602,21 @@ function StudentsCoursesPage() {
                   </button>
                 </div>
               </div>
-              {renderInvoicePrintArea()}
+              {invoiceNoticeStatus === "saved" ? (
+                <div className="auth-banner success">
+                  已產生繳費通知單，並儲存到學生帳戶。
+                </div>
+              ) : null}
+              {!selectedStudentAccountId ? (
+                <div className="auth-banner error">
+                  這筆學生資料缺少唯一 ID。請重新匯入或重新新增學生後再產生通知單。
+                </div>
+              ) : null}
+              {invoiceNoticeError ? (
+                <div className="auth-banner error">{invoiceNoticeError}</div>
+              ) : null}
+              {renderInvoiceNoticePreview()}
+              {renderStudentInvoiceHistory()}
             </section>
           </div>
         ) : null}

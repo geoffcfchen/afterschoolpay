@@ -7,6 +7,7 @@ import {
   ROLE_LEVELS,
   getRoleLevelLabel,
   getRolePresetPermissions,
+  isOrganizationSetupRequiredError,
   loadOrganizationMembers,
   loadOrganizationWorkspace,
   updateOrganizationMember,
@@ -108,6 +109,11 @@ function TeamAccessPage() {
         console.error("Unable to load team access:", error);
 
         if (active) {
+          if (isOrganizationSetupRequiredError(error)) {
+            navigate("/organization-setup", { replace: true });
+            return;
+          }
+
           setLoadError(getWorkspaceErrorMessage(error));
           setAuthStatus("error");
         }
@@ -118,7 +124,7 @@ function TeamAccessPage() {
       active = false;
       unsubscribe();
     };
-  }, []);
+  }, [navigate]);
 
   const canManageMembers =
     workspace?.member?.permissions?.canManageMembers ||

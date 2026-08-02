@@ -109,6 +109,16 @@ function makeStudentKey(studentNumber, studentName) {
   return `${studentNumber}-${studentName}`;
 }
 
+function createStudentId() {
+  if (globalThis.crypto?.randomUUID) {
+    return `student-${globalThis.crypto.randomUUID()}`;
+  }
+
+  return `student-${Date.now().toString(36)}-${Math.random()
+    .toString(36)
+    .slice(2, 10)}`;
+}
+
 function columnLabel(index) {
   let value = index + 1;
   let label = "";
@@ -259,7 +269,8 @@ function parseClassSheet(
     const rowNumber = index + 2;
     studentsInClass.add(studentKey);
     const student = addMapRecord(studentsMap, studentKey, {
-      id: studentKey,
+      id: createStudentId(),
+      importKey: studentKey,
       studentNumber,
       name: studentName,
       sourceClasses: new Set(),
@@ -288,7 +299,7 @@ function parseClassSheet(
       studentEnrollments.push(enrollmentId);
       enrollments.set(enrollmentId, {
         id: enrollmentId,
-        studentId: studentKey,
+        studentId: student.id,
         studentName,
         studentNumber,
         className: sheetName.trim(),
@@ -308,7 +319,7 @@ function parseClassSheet(
         sessions.push({
           id: `${enrollmentId}-${date}`,
           enrollmentId,
-          studentId: studentKey,
+          studentId: student.id,
           className: sheetName.trim(),
           courseName: block.label,
           date,
@@ -326,7 +337,7 @@ function parseClassSheet(
       feeDrafts.push({
         ...fee,
         id: `${sheetName}-${studentKey}-fee-${fee.source || feeIndex}-${fee.code || feeIndex}`,
-        studentId: studentKey,
+        studentId: student.id,
         studentName,
         studentNumber,
         className: sheetName.trim(),
@@ -335,9 +346,9 @@ function parseClassSheet(
     });
 
     studentRows.push({
-      id: `${sheetName}-${studentKey}`,
+      id: `${sheetName}-${student.id}-${rowNumber}`,
       rowNumber,
-      studentId: studentKey,
+      studentId: student.id,
       studentNumber,
       studentName,
       subjects: [cleanText(row[2]), cleanText(row[3])].filter(
@@ -351,7 +362,7 @@ function parseClassSheet(
     if (studentEnrollments.length > 0 || studentFees.length > 0) {
       receivableDrafts.push({
         id: `${sheetName}-${studentKey}-receivable`,
-        studentId: studentKey,
+        studentId: student.id,
         studentName,
         studentNumber,
         className: sheetName.trim(),

@@ -3,6 +3,9 @@ import {
   doc,
   getDoc,
   getDocs,
+  limit,
+  orderBy,
+  query,
   serverTimestamp,
   setDoc,
 } from "firebase/firestore/lite";
@@ -10,8 +13,6 @@ import { firestore } from "./firebase";
 
 export const DEFAULT_ORG_ID = "afterschoolpay";
 export const DEFAULT_ORG_NAME = "互動霧峰加盟校";
-
-export const PUBLIC_ORGANIZATION_CHOICES = [];
 
 export const DEFAULT_BRANCHES = [
   {
@@ -156,6 +157,15 @@ export const ROLE_PRESETS = {
 
 const normalizeEmail = (email) => (email || "").trim().toLowerCase();
 
+const ORGANIZATION_SETUP_REQUIRED_MESSAGES = new Set([
+  "尚未選擇組織。",
+  "組織尚未建立。",
+]);
+
+export function isOrganizationSetupRequiredError(error) {
+  return ORGANIZATION_SETUP_REQUIRED_MESSAGES.has(error?.message);
+}
+
 function getDefaultBranchesForOrganization(orgId) {
   if (orgId === DEFAULT_ORG_ID) {
     return DEFAULT_BRANCHES;
@@ -225,6 +235,19 @@ async function listSubcollection(path) {
   return sortByOrder(records);
 }
 
+export async function listOrganizations() {
+  const db = requireFirestore();
+  const snapshot = await getDocs(
+    query(collection(db, "organizations"), orderBy("name"), limit(50)),
+  );
+  const records = snapshot.docs.map((record) => ({
+    id: record.id,
+    ...record.data(),
+  }));
+
+  return records.filter((organization) => organization.status === "active");
+}
+
 export function getRoleLevelLabel(level) {
   return ROLE_LABELS[level] || "自訂權限";
 }
@@ -249,9 +272,19 @@ export async function ensureUserProfile(user) {
   const profileRef = doc(db, "users", user.uid);
   const profileSnapshot = await getDoc(profileRef);
   const existingProfile = profileSnapshot.exists() ? profileSnapshot.data() : {};
-  const orgIds = new Set(existingProfile.orgIds || []);
+  const existingOrgIds = Array.isArray(existingProfile.orgIds)
+    ? existingProfile.orgIds
+    : existingProfile.orgIds
+      ? [existingProfile.orgIds]
+      : [];
+  const orgIds = new Set(existingOrgIds.filter(Boolean));
   const orgIdList = Array.from(orgIds);
-  const activeOrgId = existingProfile.activeOrgId || orgIdList[0] || "";
+  const activeOrgId =
+    (typeof existingProfile.activeOrgId === "string"
+      ? existingProfile.activeOrgId
+      : "") ||
+    orgIdList[0] ||
+    "";
 
   const baseProfile = {
     uid: user.uid,

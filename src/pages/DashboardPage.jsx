@@ -4,6 +4,7 @@ import { Link, Navigate, useNavigate } from "react-router-dom";
 import { auth } from "../lib/firebase";
 import {
   getRoleLevelLabel,
+  isOrganizationSetupRequiredError,
   loadOrganizationWorkspace,
 } from "../lib/orgData";
 
@@ -13,12 +14,14 @@ const modules = [
     title: "每日收支",
     description: "記錄家長付款、退款、教材費、雜支與各分校現金流。",
     permission: "canRecordDailyLedger",
+    path: "/daily-ledger",
   },
   {
     id: "teacher-payroll",
     title: "老師薪資",
     description: "依分校、期間、課程與發放狀態查看老師薪資紀錄。",
     permission: "canViewPayroll",
+    path: "/teacher-payroll",
   },
   {
     id: "students-programs",
@@ -135,7 +138,7 @@ function DashboardPage() {
         console.error("Unable to load organization workspace:", error);
 
         if (active) {
-          if (error.message === "尚未選擇組織。") {
+          if (isOrganizationSetupRequiredError(error)) {
             navigate("/organization-setup", { replace: true });
             return;
           }

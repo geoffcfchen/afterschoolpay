@@ -902,6 +902,17 @@
   cursor: pointer;
 }
 
+.org-choice-list label.selected {
+  border-color: var(--teal-dark);
+  background: #effbf8;
+  box-shadow: inset 4px 0 0 var(--teal);
+}
+
+.org-choice-list label:focus-within {
+  border-color: var(--teal-dark);
+  outline: 3px solid rgba(16, 185, 172, 0.16);
+}
+
 .org-choice-list input {
   flex: 0 0 auto;
   width: 18px;
@@ -925,6 +936,23 @@
   font-style: normal;
   font-weight: 750;
   line-height: 1.45;
+}
+
+.org-list-state {
+  border: 1px solid #e0ebea;
+  border-radius: 8px;
+  background: #f9fcfb;
+  padding: 14px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 850;
+  line-height: 1.5;
+}
+
+.org-list-state.error {
+  border-color: #f0c7bf;
+  background: #fff4f1;
+  color: #9d2c1e;
 }
 
 .dashboard-page {
@@ -1814,20 +1842,6 @@
   border-color: var(--teal-dark);
 }
 
-.save-workspace-button {
-  min-height: 42px;
-  border: 0;
-  border-radius: 8px;
-  background: var(--teal);
-  color: #08202a;
-  padding: 0 16px;
-  font: inherit;
-  font-size: 14px;
-  font-weight: 900;
-  cursor: pointer;
-}
-
-.save-workspace-button:disabled,
 .confirm-import-button:disabled {
   cursor: not-allowed;
   opacity: 0.52;
@@ -1910,7 +1924,7 @@
 
 .workspace-action-row {
   display: grid;
-  grid-template-columns: repeat(3, minmax(82px, auto));
+  grid-template-columns: repeat(2, minmax(82px, auto));
   gap: 8px;
   align-content: center;
   align-items: center;
@@ -2023,7 +2037,8 @@
   color: #08302f;
 }
 
-.branch-empty-panel {
+.branch-empty-panel,
+.branch-loading-panel {
   margin-top: 16px;
 }
 
@@ -2521,6 +2536,29 @@
   background: #effbf8;
 }
 
+.secondary-table-action.active-toggle {
+  border-color: var(--teal-dark);
+  background: #dff8f3;
+  color: #08302f;
+}
+
+.student-row-actions {
+  display: grid;
+  gap: 6px;
+  min-width: 64px;
+}
+
+.danger-table-action {
+  border: 1px solid #f0c7bf;
+  background: #fff4f1;
+  color: #9d2c1e;
+}
+
+.danger-table-action:hover {
+  border-color: #d6533f;
+  background: #ffe5df;
+}
+
 .manual-class-form,
 .branch-create-form,
 .manual-student-form {
@@ -2705,6 +2743,10 @@
   min-width: 1120px;
 }
 
+.invoice-sheet-table.attendance-enabled {
+  min-width: 1210px;
+}
+
 .fee-options-table {
   min-width: 760px;
 }
@@ -2754,37 +2796,48 @@
 
 .course-header-cell {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 28px;
-  gap: 4px 8px;
-  align-items: center;
-  min-width: 220px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  align-items: start;
+  min-width: 240px;
 }
 
-.course-header-cell span {
+.course-header-cell > span {
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
-.course-header-cell button {
-  grid-column: 2;
-  grid-row: 1 / 3;
+.course-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.course-header-actions button {
   display: inline-grid;
-  width: 28px;
+  min-width: 28px;
   height: 28px;
   place-items: center;
   border: 1px solid #bfd8d5;
   border-radius: 8px;
   background: #ffffff;
   color: var(--teal-dark);
+  padding: 0 7px;
   font: inherit;
   font-size: 12px;
   font-weight: 950;
   cursor: pointer;
 }
 
-.course-header-cell button:hover {
+.course-header-actions button:hover {
   border-color: var(--teal-dark);
   background: #dff8f3;
+}
+
+.course-header-actions button.active-toggle {
+  border-color: var(--teal-dark);
+  background: var(--navy);
+  color: #ffffff;
 }
 
 .course-header-cell small {
@@ -2794,8 +2847,7 @@
   line-height: 1.2;
 }
 
-.invoice-sheet-table td:nth-child(4),
-.invoice-sheet-table td:nth-child(5) {
+.invoice-sheet-table .course-date-cell {
   min-width: 260px;
 }
 
@@ -2808,6 +2860,87 @@
 
 .invoice-sheet-table td strong {
   white-space: nowrap;
+}
+
+.student-name-cell {
+  display: grid;
+  gap: 5px;
+  min-width: 92px;
+}
+
+.student-name-cell em {
+  width: fit-content;
+  max-width: 132px;
+  overflow: hidden;
+  border: 1px solid #d8e7e5;
+  border-radius: 999px;
+  background: #f6faf8;
+  color: var(--muted);
+  padding: 3px 7px;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 900;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attendance-group-cell {
+  width: 86px;
+  min-width: 86px;
+}
+
+.course-attendance-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  border-radius: 8px;
+  background: #f6faf8;
+  padding: 6px;
+}
+
+.course-attendance-row > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.attendance-group-toggle {
+  display: inline-grid;
+  grid-template-columns: repeat(2, 32px);
+  gap: 4px;
+}
+
+.attendance-group-toggle button {
+  display: inline-grid;
+  width: 32px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid #d8e7e5;
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--muted);
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.attendance-group-toggle button.active {
+  border-color: var(--teal-dark);
+  background: var(--navy);
+  color: #ffffff;
+}
+
+.empty-student-row {
+  height: 96px;
+  color: var(--muted);
+  font-weight: 850;
+  text-align: center;
+  vertical-align: middle;
 }
 
 .course-disabled-note {
@@ -2862,6 +2995,10 @@
   box-shadow: 0 24px 72px rgba(7, 18, 34, 0.28);
 }
 
+.attendance-roster-modal {
+  width: min(920px, 100%);
+}
+
 .class-create-modal {
   width: min(640px, 100%);
   border: 1px solid rgba(255, 255, 255, 0.18);
@@ -2881,6 +3018,7 @@
 }
 
 .student-create-modal,
+.delete-student-modal,
 .course-date-modal,
 .fee-manager-modal {
   width: min(520px, 100%);
@@ -2919,6 +3057,61 @@
   font-size: 13px;
   font-weight: 750;
   line-height: 1.45;
+}
+
+.warning-modal-heading {
+  border-bottom-color: #f0d4cd;
+}
+
+.delete-warning-body {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 12px;
+  margin-top: 18px;
+  border: 1px solid #f0c7bf;
+  border-radius: 8px;
+  background: #fff8f6;
+  padding: 14px;
+}
+
+.delete-warning-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 999px;
+  background: #9d2c1e;
+  color: #ffffff;
+  font-size: 22px;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.delete-warning-copy {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.delete-warning-copy strong {
+  color: var(--ink);
+  font-size: 18px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.delete-warning-copy span {
+  color: #9d2c1e;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.delete-warning-copy p {
+  margin: 6px 0 0;
+  color: #62443f;
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.5;
 }
 
 .invoice-modal-actions {
@@ -3009,10 +3202,38 @@
   gap: 8px;
 }
 
+.modal-form-actions button {
+  min-height: 38px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--navy);
+  color: #ffffff;
+  padding: 0 14px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
 .modal-form-actions .secondary-modal-button {
   border: 1px solid #cfdedc;
   background: #ffffff;
   color: var(--ink);
+}
+
+.delete-modal-actions {
+  margin-top: 16px;
+}
+
+.modal-form-actions .danger-modal-button {
+  border: 1px solid #9d2c1e;
+  background: #9d2c1e;
+  color: #ffffff;
+}
+
+.modal-form-actions .danger-modal-button:hover {
+  border-color: #792014;
+  background: #792014;
 }
 
 .invoice-print-area {
@@ -3105,6 +3326,916 @@
   color: var(--muted);
   font-size: 13px;
   line-height: 1.6;
+}
+
+.attendance-print-area {
+  color: #000000;
+  font-family:
+    "Noto Sans TC",
+    "PingFang TC",
+    "Microsoft JhengHei",
+    var(--font-sans);
+  padding: 10px;
+}
+
+.attendance-print-area h2 {
+  margin: 0 0 6px;
+  color: #000000;
+  font-size: 28px;
+  font-weight: 950;
+  line-height: 1.1;
+  text-align: center;
+}
+
+.attendance-roster-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  border: 2px solid #000000;
+  border-bottom: 0;
+  color: #000000;
+  padding: 2px 6px;
+  font-size: 20px;
+  font-weight: 950;
+  line-height: 1.2;
+}
+
+.attendance-print-area table {
+  border: 2px solid #000000;
+}
+
+.attendance-print-area th,
+.attendance-print-area td {
+  height: 34px;
+  border: 2px solid #000000;
+  color: #000000;
+  padding: 2px 5px;
+  font-size: 18px;
+  font-weight: 900;
+  line-height: 1.1;
+  text-align: center;
+}
+
+.attendance-print-area th:first-child,
+.attendance-print-area td:first-child {
+  width: 72px;
+}
+
+.attendance-print-area th:nth-child(2),
+.attendance-print-area td:nth-child(2) {
+  width: 190px;
+  text-align: center;
+}
+
+.attendance-print-area th:nth-child(n + 3),
+.attendance-print-area td:nth-child(n + 3) {
+  min-width: 58px;
+}
+
+.attendance-roster-note {
+  margin: 12px 0 0;
+  color: #000000;
+  font-size: 26px;
+  font-weight: 950;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.student-invoice-history {
+  margin-top: 14px;
+  border: 1px solid #d9e5e3;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 14px;
+}
+
+.student-invoice-history-heading,
+.student-invoice-history-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.student-invoice-history-heading h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 18px;
+  line-height: 1.15;
+}
+
+.student-invoice-history-heading > span {
+  display: inline-grid;
+  min-width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 999px;
+  background: #edf8f5;
+  color: var(--teal-dark);
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.student-invoice-history-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.student-invoice-history-item {
+  border: 1px solid #e1e9e8;
+  border-radius: 8px;
+  background: #f9fcfb;
+  padding: 10px;
+}
+
+.student-invoice-history-item.latest {
+  border-color: var(--teal-dark);
+  background: #effbf8;
+}
+
+.student-invoice-history-item div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.student-invoice-history-item strong {
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.student-invoice-history-item span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.student-invoice-history-item > div:last-child {
+  justify-items: end;
+}
+
+.invoice-history-state {
+  margin: 12px 0 0;
+  border-radius: 8px;
+  background: #f6faf8;
+  padding: 10px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.invoice-history-state.error {
+  background: #fff4f1;
+  color: #9d2c1e;
+}
+
+.invoice-status-chip {
+  display: inline-flex;
+  min-height: 26px;
+  align-items: center;
+  border-radius: 999px;
+  background: #fff1dd;
+  color: #8a4a0a;
+  padding: 0 9px;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.invoice-status-chip.paid {
+  background: #dff8f0;
+  color: #0a6a5d;
+}
+
+.invoice-status-chip.overdue {
+  background: #fee2e2;
+  color: #9d2c1e;
+}
+
+.invoice-status-chip.void {
+  background: #eef1f2;
+  color: #68777c;
+}
+
+.ledger-shell {
+  width: min(1260px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: clamp(26px, 5vw, 54px) 0 72px;
+}
+
+.payroll-shell {
+  width: min(1260px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: clamp(26px, 5vw, 54px) 0 72px;
+}
+
+.ledger-hero {
+  margin-bottom: 18px;
+}
+
+.ledger-mode-toggle {
+  display: inline-flex;
+  gap: 8px;
+  margin: 0 0 16px;
+  border: 1px solid #cfe0df;
+  border-radius: 999px;
+  background: #ffffff;
+  padding: 4px;
+}
+
+.ledger-mode-toggle button {
+  min-height: 34px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  padding: 0 14px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.ledger-mode-toggle button.active {
+  background: var(--navy);
+  color: #ffffff;
+}
+
+.ledger-class-row {
+  margin-top: 16px;
+}
+
+.ledger-workspace-grid,
+.payroll-workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+  margin-top: 4px;
+}
+
+.ledger-student-panel,
+.ledger-profile-panel {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 18px;
+}
+
+.ledger-student-panel {
+  position: sticky;
+  top: 16px;
+}
+
+.ledger-panel-heading,
+.ledger-profile-heading,
+.ledger-invoice-heading,
+.ledger-invoice-actions {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ledger-panel-heading h2,
+.ledger-profile-heading h2,
+.ledger-empty-profile h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 22px;
+  line-height: 1.15;
+}
+
+.ledger-panel-heading > span {
+  display: inline-grid;
+  min-width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 999px;
+  background: #edf8f5;
+  color: var(--teal-dark);
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.ledger-state-note {
+  margin: 12px 0 0;
+  border-radius: 8px;
+  background: #f6faf8;
+  color: var(--muted);
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.ledger-state-note.error {
+  background: #fff4f1;
+  color: #9d2c1e;
+}
+
+.ledger-state-note.success {
+  background: #dff8f0;
+  color: #0a6a5d;
+}
+
+.ledger-student-list {
+  display: grid;
+  gap: 8px;
+  max-height: min(620px, calc(100svh - 280px));
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-gutter: stable;
+}
+
+.ledger-student-card {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  min-height: 64px;
+  border: 1px solid #e3ecec;
+  border-radius: 8px;
+  background: #f9fcfb;
+  color: inherit;
+  padding: 10px;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ledger-student-card:hover,
+.ledger-student-card.active {
+  border-color: rgba(15, 142, 132, 0.54);
+  background: #effbf8;
+}
+
+.ledger-student-card.active {
+  box-shadow: inset 4px 0 0 var(--teal);
+}
+
+.ledger-student-card > span {
+  display: inline-grid;
+  min-width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--navy);
+  color: var(--gold);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.ledger-student-card div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.ledger-student-card strong {
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.ledger-student-card small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ledger-profile-heading {
+  border-bottom: 1px solid #e1e9e8;
+  padding-bottom: 14px;
+}
+
+.ledger-class-badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.ledger-class-badge-row span,
+.ledger-student-id-badge {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  border: 1px solid #d8e7e5;
+  border-radius: 999px;
+  background: #f6faf8;
+  color: var(--muted);
+  padding: 0 9px;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 900;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.ledger-student-id-badge {
+  max-width: 154px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ledger-summary-grid,
+.ledger-invoice-amount-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.ledger-summary-grid {
+  margin-top: 14px;
+}
+
+.ledger-summary-grid article,
+.ledger-invoice-amount-grid span {
+  display: grid;
+  gap: 6px;
+  border: 1px solid #e3ecec;
+  border-radius: 8px;
+  background: #f9fcfb;
+  padding: 12px;
+}
+
+.ledger-summary-grid span,
+.ledger-invoice-amount-grid span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.ledger-summary-grid strong,
+.ledger-invoice-amount-grid strong {
+  color: var(--ink);
+  font-size: 18px;
+  line-height: 1.15;
+}
+
+.ledger-status-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.ledger-status-filter button {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #cfe0df;
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--ink);
+  padding: 0 12px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.ledger-status-filter button.active {
+  border-color: var(--teal-dark);
+  background: var(--navy);
+  color: #ffffff;
+}
+
+.ledger-status-filter span {
+  display: inline-grid;
+  min-width: 22px;
+  height: 22px;
+  place-items: center;
+  border-radius: 999px;
+  background: #edf5f3;
+  color: var(--teal-dark);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.ledger-status-filter button.active span {
+  background: rgba(255, 255, 255, 0.15);
+  color: var(--gold);
+}
+
+.ledger-invoice-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.ledger-invoice-card {
+  display: grid;
+  gap: 12px;
+  border: 1px solid #e3ecec;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 14px;
+}
+
+.ledger-invoice-card:hover {
+  border-color: rgba(15, 142, 132, 0.46);
+}
+
+.ledger-invoice-heading strong {
+  color: var(--ink);
+  font-size: 16px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.ledger-invoice-heading p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+.ledger-invoice-lines {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ledger-invoice-lines span {
+  border: 1px solid #d8e7e5;
+  border-radius: 999px;
+  background: #f6faf8;
+  color: var(--muted);
+  padding: 5px 8px;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.ledger-invoice-actions {
+  align-items: end;
+  border-top: 1px solid #e1e9e8;
+  padding-top: 12px;
+}
+
+.ledger-invoice-actions label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.ledger-invoice-actions select {
+  min-height: 38px;
+  border: 1px solid #cfdedc;
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--ink);
+  padding: 0 10px;
+  font: inherit;
+  font-size: 13px;
+}
+
+.ledger-empty-profile {
+  display: grid;
+  min-height: 340px;
+  align-content: center;
+  justify-items: center;
+  text-align: center;
+}
+
+.ledger-empty-profile p:last-child {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.ledger-print-modal .invoice-print-area {
+  margin-bottom: 14px;
+}
+
+.employee-create-form {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0;
+  border: 1px solid #e3ecec;
+  border-radius: 8px;
+  background: #f9fcfb;
+  padding: 12px;
+}
+
+.employee-create-form label,
+.salary-slip-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.employee-create-form input,
+.employee-create-form select,
+.salary-slip-form input {
+  min-height: 38px;
+  border: 1px solid #cfdedc;
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--ink);
+  padding: 0 10px;
+  font: inherit;
+  font-size: 13px;
+}
+
+.employee-create-form button,
+.salary-slip-total-row button {
+  min-height: 38px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--navy);
+  color: #ffffff;
+  padding: 0 14px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.employee-create-form button:disabled,
+.salary-slip-total-row button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.employee-card > span {
+  width: 48px;
+}
+
+.payroll-builder-panel {
+  min-width: 0;
+}
+
+.salary-slip-form {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.payroll-mode-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.payroll-mode-toggle button {
+  min-height: 36px;
+  border: 1px solid #cfe0df;
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--ink);
+  padding: 0 14px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.payroll-mode-toggle button.active {
+  border-color: var(--teal-dark);
+  background: var(--navy);
+  color: #ffffff;
+}
+
+.salary-form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.monthly-salary-panel,
+.monthly-additional-panel,
+.monthly-additional-list {
+  display: grid;
+  gap: 12px;
+}
+
+.monthly-additional-panel {
+  border: 1px solid #e3ecec;
+  border-radius: 8px;
+  background: #f9fcfb;
+  padding: 14px;
+}
+
+.monthly-additional-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.monthly-additional-heading h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 17px;
+  line-height: 1.15;
+}
+
+.monthly-additional-heading p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+.monthly-additional-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 150px auto;
+  gap: 10px;
+  align-items: end;
+  border: 1px solid #e0ebea;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 10px;
+}
+
+.monthly-additional-row .secondary-modal-button {
+  min-height: 38px;
+  border: 1px solid #cfdedc;
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--ink);
+  padding: 0 12px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.monthly-salary-breakdown {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.monthly-salary-breakdown span {
+  display: grid;
+  gap: 5px;
+  border: 1px solid #e0ebea;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.monthly-salary-breakdown strong {
+  color: var(--ink);
+  font-size: 18px;
+  line-height: 1.1;
+}
+
+.salary-class-list {
+  display: grid;
+  gap: 12px;
+}
+
+.salary-class-card {
+  display: grid;
+  gap: 12px;
+  border: 1px solid #e3ecec;
+  border-radius: 8px;
+  background: #f9fcfb;
+  padding: 14px;
+}
+
+.salary-class-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.salary-class-heading > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.salary-class-heading strong {
+  color: var(--ink);
+  font-size: 18px;
+  white-space: nowrap;
+}
+
+.salary-class-heading .secondary-modal-button {
+  min-height: 34px;
+  border: 1px solid #cfdedc;
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--ink);
+  padding: 0 12px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.salary-session-table-wrap {
+  overflow-x: auto;
+  scrollbar-gutter: stable;
+}
+
+.salary-session-table {
+  width: 100%;
+  min-width: 660px;
+  border-collapse: collapse;
+}
+
+.salary-session-table th,
+.salary-session-table td {
+  border: 1px solid #e0ebea;
+  padding: 8px;
+  color: var(--ink);
+  font-size: 13px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.salary-session-table th {
+  background: #eef8f5;
+  color: #264651;
+  font-weight: 950;
+}
+
+.salary-session-table th:first-child,
+.salary-session-table td:first-child {
+  width: 54px;
+  text-align: center;
+}
+
+.salary-session-table td:last-child {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.salary-session-table input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.salary-slip-total-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid #d9e5e3;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 12px;
+}
+
+.salary-slip-total-row span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.salary-slip-total-row strong {
+  color: var(--ink);
+  font-size: 24px;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.payroll-history .student-invoice-history-heading p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.salary-print-detail {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.salary-print-detail h3 {
+  margin: 0 0 6px;
+  color: var(--ink);
+  font-size: 15px;
 }
 
 .fee-options-manager {
@@ -3260,6 +4391,8 @@
   .team-editor-grid,
   .permission-grid,
   .first-setup-grid,
+  .ledger-workspace-grid,
+  .payroll-workspace-grid,
   .manual-student-form,
   .branch-workspace-panel,
   .import-stepper,
@@ -3299,10 +4432,36 @@
 
   .course-date-grid,
   .invoice-meta-grid,
+  .ledger-summary-grid,
+  .ledger-invoice-amount-grid,
+  .salary-form-grid,
+  .monthly-additional-row,
+  .monthly-salary-breakdown,
+  .salary-slip-total-row,
   .workspace-action-row,
   .class-course-form-row,
   .fee-option-form {
     grid-template-columns: 1fr;
+  }
+
+  .salary-class-heading {
+    grid-template-columns: 1fr;
+  }
+
+  .salary-class-heading > div {
+    justify-content: space-between;
+  }
+
+  .monthly-additional-heading {
+    flex-direction: column;
+  }
+
+  .ledger-student-panel {
+    position: static;
+  }
+
+  .ledger-student-list {
+    max-height: 360px;
   }
 
   .invoice-modal-heading {
@@ -3310,6 +4469,13 @@
   }
 
   .table-panel-heading {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .ledger-profile-heading,
+  .ledger-invoice-heading,
+  .ledger-invoice-actions {
     flex-direction: column;
     align-items: stretch;
   }

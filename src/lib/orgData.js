@@ -9,6 +9,7 @@ import {
   serverTimestamp,
   setDoc,
 } from "firebase/firestore/lite";
+import { updateProfile } from "firebase/auth";
 import { firestore } from "./firebase";
 
 export const DEFAULT_ORG_ID = "afterschoolpay";
@@ -72,11 +73,6 @@ export const PERMISSION_DEFINITIONS = [
     description: "記錄與查看日常付款、退款與雜支。",
   },
   {
-    key: "canTransferBetweenBranches",
-    label: "分校轉帳",
-    description: "調整共同支出或跨分校款項。",
-  },
-  {
     key: "canViewAllBranches",
     label: "查看全部分校",
     description: "不受單一分校限制。",
@@ -97,7 +93,6 @@ export const OWNER_PERMISSIONS = {
   canManageOrganization: true,
   canManageMembers: true,
   canRecordDailyLedger: true,
-  canTransferBetweenBranches: true,
   canViewAllBranches: true,
   canViewPayroll: true,
   canViewStudents: true,
@@ -107,7 +102,6 @@ export const PENDING_PERMISSIONS = {
   canManageOrganization: false,
   canManageMembers: false,
   canRecordDailyLedger: false,
-  canTransferBetweenBranches: false,
   canViewAllBranches: false,
   canViewPayroll: false,
   canViewStudents: false,
@@ -134,7 +128,6 @@ export const ROLE_PRESETS = {
     permissions: {
       ...PENDING_PERMISSIONS,
       canRecordDailyLedger: true,
-      canTransferBetweenBranches: true,
       canViewPayroll: true,
       canViewStudents: true,
     },
@@ -162,8 +155,14 @@ const ORGANIZATION_SETUP_REQUIRED_MESSAGES = new Set([
   "組織尚未建立。",
 ]);
 
+const DISPLAY_NAME_SETUP_REQUIRED_MESSAGE = "尚未設定姓名。";
+
 export function isOrganizationSetupRequiredError(error) {
   return ORGANIZATION_SETUP_REQUIRED_MESSAGES.has(error?.message);
+}
+
+export function isDisplayNameSetupRequiredError(error) {
+  return error?.message === DISPLAY_NAME_SETUP_REQUIRED_MESSAGE;
 }
 
 function getDefaultBranchesForOrganization(orgId) {
@@ -199,6 +198,9 @@ const sortByOrder = (items) =>
 
     return firstLabel.localeCompare(secondLabel);
   });
+
+const normalizeDisplayName = (displayName) =>
+  (displayName || "").trim().replace(/\s+/g, " ");
 
 async function setIfMissing(ref, data) {
   const snapshot = await getDoc(ref);
@@ -267,11 +269,13 @@ function canSeedOrganization(member) {
   return member.roleLevel === 1 || member.permissions?.canManageOrganization;
 }
 
-export async function ensureUserProfile(user) {
+export async function ensureUserProfile(user, options = {}) {
   const db = requireFirestore();
+  const requireDisplayName = options.requireDisplayName === true;
   const profileRef = doc(db, "users", user.uid);
   const profileSnapshot = await getDoc(profileRef);
   const existingProfile = profileSnapshot.exists() ? profileSnapshot.data() : {};
+  const savedDisplayName = normalizeDisplayName(existingProfile.displayName);
   const existingOrgIds = Array.isArray(existingProfile.orgIds)
     ? existingProfile.orgIds
     : existingProfile.orgIds
@@ -289,7 +293,7 @@ export async function ensureUserProfile(user) {
   const baseProfile = {
     uid: user.uid,
     email: normalizeEmail(user.email),
-    displayName: user.displayName || "",
+    displayName: savedDisplayName,
     photoURL: user.photoURL || "",
     activeOrgId,
     orgIds: orgIdList,
@@ -303,21 +307,87 @@ export async function ensureUserProfile(user) {
       createdAt: serverTimestamp(),
     });
 
-    return {
+    const createdProfile = {
       ...baseProfile,
       createdAt: null,
       lastLoginAt: null,
       updatedAt: null,
     };
+
+    if (requireDisplayName && !createdProfile.displayName) {
+      throw new Error(DISPLAY_NAME_SETUP_REQUIRED_MESSAGE);
+    }
+
+    return createdProfile;
   }
 
   await setDoc(profileRef, baseProfile, { merge: true });
 
-  return {
+  const profile = {
     ...existingProfile,
     ...baseProfile,
     lastLoginAt: existingProfile.lastLoginAt || null,
     updatedAt: existingProfile.updatedAt || null,
+  };
+
+  if (requireDisplayName && !profile.displayName) {
+    throw new Error(DISPLAY_NAME_SETUP_REQUIRED_MESSAGE);
+  }
+
+  return profile;
+}
+
+export async function saveUserDisplayName(user, displayName) {
+  const db = requireFirestore();
+  const trimmedName = normalizeDisplayName(displayName);
+
+  if (!trimmedName) {
+    throw new Error("請輸入姓名。");
+  }
+
+  const profile = await ensureUserProfile(user);
+
+  if (user && user.displayName !== trimmedName) {
+    await updateProfile(user, {
+      displayName: trimmedName,
+    });
+  }
+
+  const profileData = {
+    uid: user.uid,
+    email: normalizeEmail(user.email),
+    displayName: trimmedName,
+    photoURL: user.photoURL || "",
+    updatedAt: serverTimestamp(),
+  };
+
+  await setDoc(doc(db, "users", user.uid), profileData, { merge: true });
+
+  await Promise.all(
+    (profile.orgIds || []).map(async (orgId) => {
+      const memberRef = doc(db, "organizations", orgId, "members", user.uid);
+      const memberSnapshot = await getDoc(memberRef);
+
+      if (!memberSnapshot.exists()) {
+        return;
+      }
+
+      await setDoc(
+        memberRef,
+        {
+          displayName: trimmedName,
+          email: profileData.email,
+          photoURL: profileData.photoURL,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
+    }),
+  );
+
+  return {
+    ...profile,
+    ...profileData,
   };
 }
 
@@ -405,7 +475,11 @@ export async function ensureDefaultOrganization(member, orgId = DEFAULT_ORG_ID) 
   return organization;
 }
 
-function buildOwnerMember(user, orgId = DEFAULT_ORG_ID) {
+function getProfileDisplayName(user, profile) {
+  return normalizeDisplayName(profile?.displayName) || user.displayName || "";
+}
+
+function buildOwnerMember(user, orgId = DEFAULT_ORG_ID, profile = null) {
   const branchIds = getDefaultBranchesForOrganization(orgId).map(
     (branch) => branch.id,
   );
@@ -413,7 +487,7 @@ function buildOwnerMember(user, orgId = DEFAULT_ORG_ID) {
   return {
     uid: user.uid,
     email: normalizeEmail(user.email),
-    displayName: user.displayName || "",
+    displayName: getProfileDisplayName(user, profile),
     photoURL: user.photoURL || "",
     role: "owner",
     roleLevel: 1,
@@ -425,11 +499,11 @@ function buildOwnerMember(user, orgId = DEFAULT_ORG_ID) {
   };
 }
 
-function buildPendingMember(user) {
+function buildPendingMember(user, profile = null) {
   return {
     uid: user.uid,
     email: normalizeEmail(user.email),
-    displayName: user.displayName || "",
+    displayName: getProfileDisplayName(user, profile),
     photoURL: user.photoURL || "",
     role: "pending",
     roleLevel: 4,
@@ -441,7 +515,11 @@ function buildPendingMember(user) {
   };
 }
 
-export async function ensureOrganizationMember(user, orgId = DEFAULT_ORG_ID) {
+export async function ensureOrganizationMember(
+  user,
+  orgId = DEFAULT_ORG_ID,
+  profile = null,
+) {
   const db = requireFirestore();
   const memberRef = doc(
     db,
@@ -451,15 +529,47 @@ export async function ensureOrganizationMember(user, orgId = DEFAULT_ORG_ID) {
     user.uid,
   );
   const memberSnapshot = await getDoc(memberRef);
+  const displayName = getProfileDisplayName(user, profile);
+  const email = normalizeEmail(user.email);
+  const photoURL = user.photoURL || "";
 
   if (memberSnapshot.exists()) {
-    return {
+    const existingMember = {
       id: memberRef.id,
       ...memberSnapshot.data(),
     };
+
+    if (
+      displayName &&
+      (existingMember.displayName !== displayName ||
+        existingMember.email !== email ||
+        existingMember.photoURL !== photoURL)
+    ) {
+      await setDoc(
+        memberRef,
+        {
+          displayName,
+          email,
+          photoURL,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
+
+      return {
+        ...existingMember,
+        displayName,
+        email,
+        photoURL,
+      };
+    }
+
+    return {
+      ...existingMember,
+    };
   }
 
-  const member = buildPendingMember(user);
+  const member = buildPendingMember(user, profile);
 
   await setDoc(memberRef, {
     ...member,
@@ -475,14 +585,14 @@ export async function ensureOrganizationMember(user, orgId = DEFAULT_ORG_ID) {
 }
 
 export async function loadOrganizationWorkspace(user) {
-  const profile = await ensureUserProfile(user);
+  const profile = await ensureUserProfile(user, { requireDisplayName: true });
   const activeOrgId = profile.activeOrgId || profile.orgIds?.[0] || "";
 
   if (!activeOrgId) {
     throw new Error("尚未選擇組織。");
   }
 
-  const member = await ensureOrganizationMember(user, activeOrgId);
+  const member = await ensureOrganizationMember(user, activeOrgId, profile);
   const organization = await ensureDefaultOrganization(member, activeOrgId);
   const [branches, programs] = await Promise.all([
     listSubcollection(["organizations", activeOrgId, "branches"]),
@@ -585,12 +695,12 @@ export async function requestOrganizationAccess(
   orgId = DEFAULT_ORG_ID,
 ) {
   const db = requireFirestore();
-  const profile = await ensureUserProfile(user);
+  const profile = await ensureUserProfile(user, { requireDisplayName: true });
   const memberRef = doc(db, "organizations", orgId, "members", user.uid);
   const memberSnapshot = await getDoc(memberRef);
 
   if (!memberSnapshot.exists()) {
-    const member = buildPendingMember(user);
+    const member = buildPendingMember(user, profile);
 
     await setDoc(memberRef, {
       ...member,
@@ -610,7 +720,7 @@ export async function createOrganizationForUser(user, organizationName) {
   const db = requireFirestore();
   const name = organizationName.trim();
   const orgId = buildOrganizationId(name);
-  const profile = await ensureUserProfile(user);
+  const profile = await ensureUserProfile(user, { requireDisplayName: true });
   const organizationRef = doc(db, "organizations", orgId);
   const branchRecords = getDefaultBranchesForOrganization(orgId);
 
@@ -626,7 +736,7 @@ export async function createOrganizationForUser(user, organizationName) {
   });
 
   await setDoc(doc(db, "organizations", orgId, "members", user.uid), {
-    ...buildOwnerMember(user, orgId),
+    ...buildOwnerMember(user, orgId, profile),
     invitedBy: "organization-creator",
     createdAt: serverTimestamp(),
   });

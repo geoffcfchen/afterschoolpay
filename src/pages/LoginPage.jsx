@@ -20,13 +20,13 @@ function LoginPage() {
     const nextErrors = {};
 
     if (!email) {
-      nextErrors.email = "Email is required";
+      nextErrors.email = "請輸入 Email";
     } else if (!/\S+@\S+\.\S+/.test(email)) {
-      nextErrors.email = "Invalid email address";
+      nextErrors.email = "Email 格式不正確";
     }
 
     if (!password) {
-      nextErrors.password = "Password is required";
+      nextErrors.password = "請輸入密碼";
     }
 
     return nextErrors;
@@ -70,14 +70,14 @@ function LoginPage() {
 
       <section className="auth-card" aria-labelledby="login-title">
         {loginFailed ? (
-          <div className="auth-banner error">Invalid email or password.</div>
+          <div className="auth-banner error">Email 或密碼不正確。</div>
         ) : null}
 
-        <h1 id="login-title">Enter your password</h1>
+        <h1 id="login-title">輸入密碼</h1>
 
         <form onSubmit={handleSubmit} noValidate>
           <div className="auth-field-block">
-            <label className="auth-label">Email address</label>
+            <label className="auth-label">Email</label>
             {isEditingEmail ? (
               <>
                 <input
@@ -99,7 +99,7 @@ function LoginPage() {
               <div className="email-pill">
                 <span title={email}>{email}</span>
                 <button type="button" onClick={() => setIsEditingEmail(true)}>
-                  Edit
+                  修改
                 </button>
               </div>
             )}
@@ -107,7 +107,7 @@ function LoginPage() {
 
           <div className="auth-field-block">
             <label className="auth-label" htmlFor="login-password">
-              Password
+              密碼
             </label>
             <div className="password-shell">
               <input
@@ -117,16 +117,16 @@ function LoginPage() {
                   setPassword(event.target.value);
                   setErrors((current) => ({ ...current, password: "" }));
                 }}
-                placeholder="Password"
+                placeholder="請輸入密碼"
                 type={showPassword ? "text" : "password"}
                 value={password}
               />
               <button
-                aria-label={showPassword ? "Hide password" : "Show password"}
+                aria-label={showPassword ? "隱藏密碼" : "顯示密碼"}
                 onClick={() => setShowPassword((current) => !current)}
                 type="button"
               >
-                {showPassword ? "Hide" : "Show"}
+                {showPassword ? "隱藏" : "顯示"}
               </button>
             </div>
             {errors.password ? (
@@ -135,15 +135,15 @@ function LoginPage() {
           </div>
 
           <button className="auth-page-button" disabled={submitting}>
-            {submitting ? "Signing in..." : "Continue"}
+            {submitting ? "登入中..." : "繼續"}
           </button>
         </form>
       </section>
 
       <footer className="auth-terms-row">
-        <Link to="/">Back to home</Link>
+        <Link to="/">回首頁</Link>
         <span>|</span>
-        <a href="mailto:hello@afterschoolpay.com">Support</a>
+        <a href="mailto:hello@afterschoolpay.com">聯絡支援</a>
       </footer>
     </main>
   );

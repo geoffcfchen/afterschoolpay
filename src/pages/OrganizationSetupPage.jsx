@@ -4,6 +4,8 @@ import { Link, Navigate, useNavigate } from "react-router-dom";
 import { auth } from "../lib/firebase";
 import {
   createOrganizationForUser,
+  ensureUserProfile,
+  isDisplayNameSetupRequiredError,
   listOrganizations,
   requestOrganizationAccess,
 } from "../lib/orgData";
@@ -27,7 +29,7 @@ function OrganizationSetupPage() {
     }
 
     let active = true;
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (!active) {
         return;
       }
@@ -36,6 +38,27 @@ function OrganizationSetupPage() {
       setAuthStatus(user ? "ready" : "signed-out");
 
       if (!user) {
+        return;
+      }
+
+      try {
+        await ensureUserProfile(user, { requireDisplayName: true });
+      } catch (error) {
+        console.error("Unable to load user profile:", error);
+
+        if (!active) {
+          return;
+        }
+
+        if (isDisplayNameSetupRequiredError(error)) {
+          navigate("/profile-setup?next=/organization-setup", {
+            replace: true,
+          });
+          return;
+        }
+
+        setAuthStatus("error");
+        setMessage("目前無法載入帳號資料。請確認 Firestore rules 已發布。");
         return;
       }
 
@@ -81,7 +104,7 @@ function OrganizationSetupPage() {
       active = false;
       unsubscribe();
     };
-  }, []);
+  }, [navigate]);
 
   const handleSignOut = async () => {
     if (!auth) {
@@ -109,6 +132,12 @@ function OrganizationSetupPage() {
       navigate("/dashboard", { replace: true });
     } catch (error) {
       console.error("Unable to request organization access:", error);
+      if (isDisplayNameSetupRequiredError(error)) {
+        navigate("/profile-setup?next=/organization-setup", {
+          replace: true,
+        });
+        return;
+      }
       setStatus("error");
       setMessage("無法送出加入申請。請確認 Firestore rules 已發布後再試一次。");
     }
@@ -132,6 +161,12 @@ function OrganizationSetupPage() {
       navigate("/students-courses", { replace: true });
     } catch (error) {
       console.error("Unable to create organization:", error);
+      if (isDisplayNameSetupRequiredError(error)) {
+        navigate("/profile-setup?next=/organization-setup", {
+          replace: true,
+        });
+        return;
+      }
       setStatus("error");
       setMessage("無法建立組織。請確認 Firestore rules 已發布後再試一次。");
     }
@@ -163,13 +198,24 @@ function OrganizationSetupPage() {
           </span>
           <span>Afterschool Pay</span>
         </Link>
-        <button
-          className="dashboard-sign-out"
-          onClick={handleSignOut}
-          type="button"
-        >
-          登出
-        </button>
+        <div className="dashboard-user-row">
+          <span className="dashboard-email">
+            {currentUser?.displayName || currentUser?.email}
+          </span>
+          <Link
+            className="dashboard-text-link"
+            to="/profile-setup?edit=1&next=/organization-setup"
+          >
+            修改姓名
+          </Link>
+          <button
+            className="dashboard-sign-out"
+            onClick={handleSignOut}
+            type="button"
+          >
+            登出
+          </button>
+        </div>
       </header>
 
       <section className="org-setup-shell" aria-labelledby="org-setup-title">

@@ -3,14 +3,19 @@ import { onAuthStateChanged, signOut } from "firebase/auth";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { auth } from "../lib/firebase";
 import {
+  isDisplayNameSetupRequiredError,
   isOrganizationSetupRequiredError,
   loadOrganizationWorkspace,
 } from "../lib/orgData";
 import {
   INVOICE_STATUS_LABELS,
+  PAYMENT_METHOD_LABELS,
+  createStudentInvoicePayment,
   getInvoiceStatusLabel,
+  getPaymentMethodLabel,
   subscribeOrganizationStudents,
   subscribeStudentInvoices,
+  subscribeStudentPayments,
   updateStudentInvoiceStatus,
 } from "../lib/studentInvoiceData";
 import {
@@ -31,6 +36,13 @@ const INVOICE_STATUS_OPTIONS = [
   { value: "paid", label: INVOICE_STATUS_LABELS.paid },
   { value: "void", label: INVOICE_STATUS_LABELS.void },
 ];
+
+const PAYMENT_METHOD_OPTIONS = Object.entries(PAYMENT_METHOD_LABELS).map(
+  ([value, label]) => ({
+    label,
+    value,
+  }),
+);
 
 const SALARY_STATUS_OPTIONS = [
   { value: "unpaid", label: SALARY_SLIP_STATUS_LABELS.unpaid },
@@ -215,8 +227,16 @@ function getInvoiceAmount(invoice) {
   return Number(invoice?.balance ?? invoice?.total) || 0;
 }
 
+function getPaymentAmount(payment) {
+  return Number(payment?.amount) || 0;
+}
+
 function getInvoiceStatus(invoice) {
   return invoice?.status || "unpaid";
+}
+
+function getCurrentUserDisplayName(workspace, user) {
+  return workspace?.profile?.displayName || user?.displayName || user?.email || "";
 }
 
 function getSalarySlipAmount(salarySlip) {
@@ -284,6 +304,18 @@ function DailyLedgerPage() {
   const [updatingInvoiceId, setUpdatingInvoiceId] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [printInvoice, setPrintInvoice] = useState(null);
+  const [paymentRecords, setPaymentRecords] = useState([]);
+  const [paymentLoadStatus, setPaymentLoadStatus] = useState("idle");
+  const [paymentLoadError, setPaymentLoadError] = useState("");
+  const [paymentTargetInvoice, setPaymentTargetInvoice] = useState(null);
+  const [paymentForm, setPaymentForm] = useState({
+    amount: "",
+    method: "cash",
+    note: "",
+  });
+  const [paymentSaveStatus, setPaymentSaveStatus] = useState("idle");
+  const [paymentError, setPaymentError] = useState("");
+  const [printPayment, setPrintPayment] = useState(null);
   const [employees, setEmployees] = useState([]);
   const [employeeLoadStatus, setEmployeeLoadStatus] = useState("idle");
   const [employeeLoadError, setEmployeeLoadError] = useState("");
@@ -336,6 +368,11 @@ function DailyLedgerPage() {
         console.error("Unable to load daily ledger workspace:", error);
 
         if (active) {
+          if (isDisplayNameSetupRequiredError(error)) {
+            navigate("/profile-setup?next=/daily-ledger", { replace: true });
+            return;
+          }
+
           if (isOrganizationSetupRequiredError(error)) {
             navigate("/organization-setup", { replace: true });
             return;
@@ -633,6 +670,57 @@ function DailyLedgerPage() {
         return;
       }
 
+      if (!workspace?.activeOrgId || !selectedStudent?.id) {
+        setPaymentRecords([]);
+        setPaymentLoadStatus("idle");
+        setPaymentLoadError("");
+        return;
+      }
+
+      setPaymentRecords([]);
+      setPaymentLoadStatus("loading");
+      setPaymentLoadError("");
+
+      unsubscribe = subscribeStudentPayments({
+        onChange: (records) => {
+          if (!active) {
+            return;
+          }
+
+          setPaymentRecords(records);
+          setPaymentLoadStatus("ready");
+        },
+        onError: (error) => {
+          console.error("Unable to listen to student payments:", error);
+
+          if (!active) {
+            return;
+          }
+
+          setPaymentRecords([]);
+          setPaymentLoadStatus("error");
+          setPaymentLoadError("無法載入此學生的收款紀錄。");
+        },
+        orgId: workspace.activeOrgId,
+        studentId: selectedStudent.id,
+      });
+    });
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [selectedStudent?.id, workspace?.activeOrgId]);
+
+  useEffect(() => {
+    let active = true;
+    let unsubscribe = () => {};
+
+    Promise.resolve().then(() => {
+      if (!active) {
+        return;
+      }
+
       if (!workspace?.activeOrgId || !selectedEmployee?.id) {
         setSalarySlipRecords([]);
         setSalarySlipLoadStatus("idle");
@@ -676,7 +764,7 @@ function DailyLedgerPage() {
   }, [selectedEmployee?.id, workspace?.activeOrgId]);
 
   useEffect(() => {
-    if (!printInvoice && !printSalarySlip) {
+    if (!printInvoice && !printSalarySlip && !printPayment && !paymentTargetInvoice) {
       return undefined;
     }
 
@@ -685,6 +773,8 @@ function DailyLedgerPage() {
       if (event.key === "Escape") {
         setPrintInvoice(null);
         setPrintSalarySlip(null);
+        setPrintPayment(null);
+        setPaymentTargetInvoice(null);
       }
     };
 
@@ -695,7 +785,7 @@ function DailyLedgerPage() {
       document.body.style.overflow = originalOverflow;
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [printInvoice, printSalarySlip]);
+  }, [paymentTargetInvoice, printInvoice, printPayment, printSalarySlip]);
 
   const invoiceCounts = useMemo(
     () =>
@@ -727,6 +817,14 @@ function DailyLedgerPage() {
         .filter((invoice) => ["unpaid", "overdue"].includes(getInvoiceStatus(invoice)))
         .reduce((total, invoice) => total + getInvoiceAmount(invoice), 0),
     [invoiceRecords],
+  );
+  const selectedStudentPaidTotal = useMemo(
+    () =>
+      paymentRecords.reduce(
+        (total, payment) => total + getPaymentAmount(payment),
+        0,
+      ),
+    [paymentRecords],
   );
 
   const branchSalarySlips = useMemo(
@@ -778,6 +876,91 @@ function DailyLedgerPage() {
     navigate("/");
   };
 
+  const closePaymentModal = () => {
+    setPaymentTargetInvoice(null);
+    setPaymentForm({
+      amount: "",
+      method: "cash",
+      note: "",
+    });
+    setPaymentError("");
+    setPaymentSaveStatus("idle");
+  };
+
+  const openPaymentModal = (invoice) => {
+    if (!invoice || getInvoiceStatus(invoice) === "void") {
+      return;
+    }
+
+    setPaymentTargetInvoice(invoice);
+    setPaymentForm({
+      amount: String(getInvoiceAmount(invoice) || ""),
+      method: "cash",
+      note: "",
+    });
+    setPaymentError("");
+    setPaymentSaveStatus("idle");
+  };
+
+  const handlePaymentSubmit = async (event) => {
+    event.preventDefault();
+
+    if (
+      !paymentTargetInvoice?.id ||
+      !selectedStudent?.id ||
+      !selectedBranch?.id ||
+      !workspace?.activeOrgId ||
+      paymentSaveStatus === "saving"
+    ) {
+      return;
+    }
+
+    const amount = Math.round(Number(paymentForm.amount) || 0);
+    const balance = getInvoiceAmount(paymentTargetInvoice);
+
+    if (amount <= 0) {
+      setPaymentError("收款金額必須大於 0。");
+      return;
+    }
+
+    if (amount > balance) {
+      setPaymentError("收款金額不能大於未收金額。");
+      return;
+    }
+
+    setPaymentSaveStatus("saving");
+    setPaymentError("");
+
+    try {
+      const saved = await createStudentInvoicePayment({
+        amount,
+        invoice: paymentTargetInvoice,
+        method: paymentForm.method,
+        note: paymentForm.note,
+        organization: workspace.organization,
+        orgId: workspace.activeOrgId,
+        receivedAtBranch: selectedBranch,
+        receivedBy: {
+          displayName: getCurrentUserDisplayName(workspace, currentUser),
+          email: currentUser?.email || "",
+          uid: currentUser?.uid || "",
+        },
+        student: {
+          ...selectedStudent,
+          primaryLegacyNumber: getPrimaryLegacyNumber(selectedStudent),
+        },
+      });
+
+      setStatusMessage(`已建立收據 ${saved.receiptNumber}。`);
+      setPrintPayment(saved.payment);
+      closePaymentModal();
+    } catch (error) {
+      console.error("Unable to create student payment:", error);
+      setPaymentError(error.message || "收款失敗。請確認 Firestore 權限後再試一次。");
+      setPaymentSaveStatus("idle");
+    }
+  };
+
   const handleStatusChange = async (invoice, status) => {
     if (
       !selectedStudent?.id ||
@@ -785,6 +968,11 @@ function DailyLedgerPage() {
       !workspace?.activeOrgId ||
       updatingInvoiceId
     ) {
+      return;
+    }
+
+    if (status === "paid") {
+      openPaymentModal(invoice);
       return;
     }
 
@@ -894,6 +1082,71 @@ function DailyLedgerPage() {
         </table>
         <p className="invoice-receipt-note">
           列印日期：{formatDateTime(new Date().toISOString())}。收款完成後請在每日收支更新狀態。
+        </p>
+      </div>
+    );
+  };
+
+  const renderPaymentReceipt = (payment) => {
+    const studentName =
+      payment.studentSnapshot?.name || selectedStudent?.name || "未記錄";
+    const studentNumber =
+      payment.studentSnapshot?.studentNumber ||
+      getPrimaryLegacyNumber(selectedStudent) ||
+      "未記錄";
+
+    return (
+      <div className="invoice-print-area receipt-print-area">
+        <header>
+          <p>{payment.organizationSnapshot?.name || workspace.organization.name}</p>
+          <h2>收據</h2>
+        </header>
+        <div className="invoice-meta-grid">
+          <span>收據：{payment.receiptNumber || payment.id}</span>
+          <span>收款日期：{formatDateTime(payment.receivedAtIso)}</span>
+          <span>
+            收款分校：{payment.receivedAtBranchSnapshot?.name || "未記錄"}
+          </span>
+          <span>收款人：{payment.receivedByName || "未記錄"}</span>
+          <span>學生：{studentName}</span>
+          <span>編號：{studentNumber}</span>
+          <span>通知單：{payment.invoiceNumber || payment.invoiceId}</span>
+          <span>
+            通知單分校：{payment.invoiceSourceBranchSnapshot?.name || "未記錄"}
+          </span>
+          <span>付款方式：{getPaymentMethodLabel(payment.method)}</span>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>項目</th>
+              <th>說明</th>
+              <th>金額</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>繳費通知單收款</td>
+              <td>{payment.invoiceNumber || payment.invoiceId}</td>
+              <td>{formatCurrency(payment.amount)}</td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colSpan="2">本次收款</td>
+              <td>{formatCurrency(payment.amount)}</td>
+            </tr>
+            <tr>
+              <td colSpan="2">收款後未收</td>
+              <td>{formatCurrency(payment.balanceAfter)}</td>
+            </tr>
+          </tfoot>
+        </table>
+        {payment.note ? (
+          <p className="invoice-receipt-note">備註：{payment.note}</p>
+        ) : null}
+        <p className="invoice-receipt-note">
+          列印日期：{formatDateTime(new Date().toISOString())}。此收據依每日收支收款紀錄產生。
         </p>
       </div>
     );
@@ -1074,7 +1327,17 @@ function DailyLedgerPage() {
               老師薪資
             </Link>
           ) : null}
-          <span className="dashboard-email">{currentUser?.email}</span>
+          <span className="dashboard-email">
+            {workspace.profile?.displayName ||
+              currentUser?.displayName ||
+              currentUser?.email}
+          </span>
+          <Link
+            className="dashboard-text-link"
+            to="/profile-setup?edit=1&next=/daily-ledger"
+          >
+            修改姓名
+          </Link>
           <button
             className="dashboard-sign-out"
             onClick={handleSignOut}
@@ -1306,7 +1569,67 @@ function DailyLedgerPage() {
                         <span>未收金額</span>
                         <strong>{formatCurrency(selectedStudentBalance)}</strong>
                       </article>
+                      <article>
+                        <span>已收金額</span>
+                        <strong>{formatCurrency(selectedStudentPaidTotal)}</strong>
+                      </article>
                     </div>
+
+                    <section
+                      className="ledger-payment-history"
+                      aria-labelledby="student-payment-history-title"
+                    >
+                      <div className="ledger-payment-history-heading">
+                        <div>
+                          <p className="dashboard-kicker">收款紀錄</p>
+                          <h3 id="student-payment-history-title">收據紀錄</h3>
+                        </div>
+                        <span>{paymentRecords.length} 筆</span>
+                      </div>
+
+                      {paymentLoadStatus === "loading" ? (
+                        <p className="ledger-state-note">正在載入收款紀錄...</p>
+                      ) : null}
+
+                      {paymentLoadStatus === "error" ? (
+                        <p className="ledger-state-note error">
+                          {paymentLoadError}
+                        </p>
+                      ) : null}
+
+                      {paymentLoadStatus === "ready" && !paymentRecords.length ? (
+                        <p className="ledger-state-note">
+                          此學生目前還沒有收款紀錄。
+                        </p>
+                      ) : null}
+
+                      {paymentRecords.length ? (
+                        <div className="ledger-payment-list">
+                          {paymentRecords.slice(0, 6).map((payment) => (
+                            <article className="ledger-payment-card" key={payment.id}>
+                              <div>
+                                <strong>{payment.receiptNumber || payment.id}</strong>
+                                <p>
+                                  {formatDateTime(payment.receivedAtIso)} ·{" "}
+                                  {payment.receivedAtBranchSnapshot?.name ||
+                                    "未記錄分校"}{" "}
+                                  · {payment.receivedByName || "未記錄收款人"}
+                                </p>
+                              </div>
+                              <span>{getPaymentMethodLabel(payment.method)}</span>
+                              <strong>{formatCurrency(payment.amount)}</strong>
+                              <button
+                                className="table-action-button"
+                                onClick={() => setPrintPayment(payment)}
+                                type="button"
+                              >
+                                收據
+                              </button>
+                            </article>
+                          ))}
+                        </div>
+                      ) : null}
+                    </section>
 
                     <div className="ledger-status-filter" aria-label="通知單狀態">
                       <button
@@ -1417,7 +1740,10 @@ function DailyLedgerPage() {
                             <label>
                               狀態
                               <select
-                                disabled={updatingInvoiceId === invoice.id}
+                                disabled={
+                                  updatingInvoiceId === invoice.id ||
+                                  paymentSaveStatus === "saving"
+                                }
                                 onChange={(event) =>
                                   handleStatusChange(invoice, event.target.value)
                                 }
@@ -1430,12 +1756,22 @@ function DailyLedgerPage() {
                                 ))}
                               </select>
                             </label>
+                            {getInvoiceAmount(invoice) > 0 &&
+                            getInvoiceStatus(invoice) !== "void" ? (
+                              <button
+                                className="table-action-button primary"
+                                onClick={() => openPaymentModal(invoice)}
+                                type="button"
+                              >
+                                收款
+                              </button>
+                            ) : null}
                             <button
                               className="table-action-button"
                               onClick={() => setPrintInvoice(invoice)}
                               type="button"
                             >
-                              列印
+                              通知單
                             </button>
                           </div>
                         </article>
@@ -1701,6 +2037,127 @@ function DailyLedgerPage() {
         ) : null}
       </section>
 
+      {paymentTargetInvoice ? (
+        <div className="invoice-modal-backdrop" onClick={closePaymentModal}>
+          <section
+            aria-labelledby="payment-modal-title"
+            aria-modal="true"
+            className="invoice-preview-modal payment-modal"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+          >
+            <div className="invoice-modal-heading">
+              <div>
+                <p className="dashboard-kicker">收款</p>
+                <h2 id="payment-modal-title">建立收款紀錄</h2>
+                <p>{paymentTargetInvoice.invoiceNumber || paymentTargetInvoice.id}</p>
+              </div>
+              <button
+                className="modal-close-icon"
+                onClick={closePaymentModal}
+                type="button"
+              >
+                關閉
+              </button>
+            </div>
+
+            <div className="payment-modal-summary">
+              <span>
+                學生
+                <strong>{selectedStudent?.name || "未命名學生"}</strong>
+              </span>
+              <span>
+                通知單分校
+                <strong>
+                  {paymentTargetInvoice.sourceBranchSnapshot?.name || "未記錄"}
+                </strong>
+              </span>
+              <span>
+                收款分校
+                <strong>{selectedBranch?.name || "未記錄"}</strong>
+              </span>
+              <span>
+                收款人
+                <strong>{getCurrentUserDisplayName(workspace, currentUser)}</strong>
+              </span>
+              <span>
+                未收金額
+                <strong>{formatCurrency(getInvoiceAmount(paymentTargetInvoice))}</strong>
+              </span>
+            </div>
+
+            <form className="payment-form" onSubmit={handlePaymentSubmit}>
+              <label>
+                收款金額
+                <input
+                  min="1"
+                  max={getInvoiceAmount(paymentTargetInvoice)}
+                  onChange={(event) =>
+                    setPaymentForm((current) => ({
+                      ...current,
+                      amount: event.target.value,
+                    }))
+                  }
+                  type="number"
+                  value={paymentForm.amount}
+                />
+              </label>
+              <label>
+                付款方式
+                <select
+                  onChange={(event) =>
+                    setPaymentForm((current) => ({
+                      ...current,
+                      method: event.target.value,
+                    }))
+                  }
+                  value={paymentForm.method}
+                >
+                  {PAYMENT_METHOD_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="payment-form-full">
+                備註
+                <textarea
+                  onChange={(event) =>
+                    setPaymentForm((current) => ({
+                      ...current,
+                      note: event.target.value,
+                    }))
+                  }
+                  placeholder="例如：二校櫃台代收、家長現金繳清"
+                  rows="3"
+                  value={paymentForm.note}
+                />
+              </label>
+
+              {paymentError ? (
+                <p className="ledger-state-note error payment-form-full">
+                  {paymentError}
+                </p>
+              ) : null}
+
+              <div className="invoice-modal-actions payment-form-full">
+                <button disabled={paymentSaveStatus === "saving"} type="submit">
+                  {paymentSaveStatus === "saving" ? "儲存中..." : "確認收款並開收據"}
+                </button>
+                <button
+                  className="secondary-modal-button"
+                  onClick={closePaymentModal}
+                  type="button"
+                >
+                  取消
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      ) : null}
+
       {printInvoice ? (
         <div
           className="invoice-modal-backdrop"
@@ -1735,6 +2192,49 @@ function DailyLedgerPage() {
               <button
                 className="secondary-modal-button"
                 onClick={() => setPrintInvoice(null)}
+                type="button"
+              >
+                取消
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {printPayment ? (
+        <div
+          className="invoice-modal-backdrop"
+          onClick={() => setPrintPayment(null)}
+        >
+          <section
+            aria-labelledby="receipt-print-title"
+            aria-modal="true"
+            className="invoice-preview-modal ledger-print-modal"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+          >
+            <div className="invoice-modal-heading no-print">
+              <div>
+                <p className="dashboard-kicker">列印</p>
+                <h2 id="receipt-print-title">收據</h2>
+                <p>{printPayment.receiptNumber || printPayment.id}</p>
+              </div>
+              <button
+                className="modal-close-icon"
+                onClick={() => setPrintPayment(null)}
+                type="button"
+              >
+                關閉
+              </button>
+            </div>
+            {renderPaymentReceipt(printPayment)}
+            <div className="invoice-modal-actions no-print">
+              <button onClick={() => window.print()} type="button">
+                列印
+              </button>
+              <button
+                className="secondary-modal-button"
+                onClick={() => setPrintPayment(null)}
                 type="button"
               >
                 取消

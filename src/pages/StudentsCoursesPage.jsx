@@ -10,6 +10,7 @@ import {
 } from "../lib/billingWorkspaceData";
 import {
   createOrganizationBranch,
+  isDisplayNameSetupRequiredError,
   isOrganizationSetupRequiredError,
   loadOrganizationWorkspace,
 } from "../lib/orgData";
@@ -704,6 +705,13 @@ function StudentsCoursesPage() {
         console.error("Unable to load students workspace:", error);
 
         if (active) {
+          if (isDisplayNameSetupRequiredError(error)) {
+            navigate("/profile-setup?next=/students-courses", {
+              replace: true,
+            });
+            return;
+          }
+
           if (isOrganizationSetupRequiredError(error)) {
             navigate("/organization-setup", { replace: true });
             return;
@@ -2537,7 +2545,17 @@ function StudentsCoursesPage() {
           <Link className="dashboard-text-link" to="/dashboard">
             回管理後台
           </Link>
-          <span className="dashboard-email">{currentUser?.email}</span>
+          <span className="dashboard-email">
+            {workspace.profile?.displayName ||
+              currentUser?.displayName ||
+              currentUser?.email}
+          </span>
+          <Link
+            className="dashboard-text-link"
+            to="/profile-setup?edit=1&next=/students-courses"
+          >
+            修改姓名
+          </Link>
           <button
             className="dashboard-sign-out"
             onClick={handleSignOut}

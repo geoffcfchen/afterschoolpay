@@ -14,30 +14,51 @@ const StudentsCoursesPage = lazy(() => import("./pages/StudentsCoursesPage"));
 const DailyLedgerPage = lazy(() => import("./pages/DailyLedgerPage"));
 const TeacherPayrollPage = lazy(() => import("./pages/TeacherPayrollPage"));
 const TeamAccessPage = lazy(() => import("./pages/TeamAccessPage"));
+const ProfileSetupPage = lazy(() => import("./pages/ProfileSetupPage"));
 const OrganizationSetupPage = lazy(
   () => import("./pages/OrganizationSetupPage"),
 );
 
 const benefits = [
   {
-    title: "Collect from every family",
-    text: "Accept program fees, drop-in charges, late pickup fees, and reimbursements without chasing separate spreadsheets.",
+    title: "Excel 匯入一次，之後都在系統維護",
+    text: "第一次把班級、學生、科目與雜項費用匯入資料庫，後續新增班級、調整學生課程與費用都會即時儲存。",
   },
   {
-    title: "Know every balance",
-    text: "Give staff a live view of paid, pending, waived, and overdue balances before pickup gets busy.",
+    title: "繳費通知單跟著學生走",
+    text: "每張通知單都存到學生帳戶底下，同一位學生跨分校上課，也能在每日收支一次看到所有未付款紀錄。",
   },
   {
-    title: "Close the week faster",
-    text: "Reconcile payments, attendance, and payouts in one place so program directors can move on.",
+    title: "每日收支同時管理收入與薪資",
+    text: "櫃台可標記未付款、已逾期、已付款或作廢，也能管理老師薪資單的未發放、已發放與作廢狀態。",
   },
 ];
 
 const workflows = [
-  "Send payment requests after enrollment or attendance updates.",
-  "Let parents pay from a secure link on mobile or desktop.",
-  "Track balances by student, family, program, and school site.",
-  "Export clean records for accounting and subsidy reporting.",
+  {
+    title: "建立組織與分校",
+    text: "負責人建立補習班工作區，再設定一校、二校、三校或新增其他分校。",
+  },
+  {
+    title: "管理班級、科目與學生",
+    text: "依國一、國二等班級查看名單，調整科目、A/B 班與點名表日期。",
+  },
+  {
+    title: "產生繳費通知單",
+    text: "從班級表格預覽學生費用，確認後把通知單存入學生帳戶。",
+  },
+  {
+    title: "每日收支完成付款與列印",
+    text: "學生到任一分校繳費時，櫃台可查到跨分校通知單並更新付款狀態。",
+  },
+];
+
+const roleOptions = [
+  "補習班負責人",
+  "分校主管",
+  "櫃台行政",
+  "會計人員",
+  "老師",
 ];
 
 function LandingPage() {
@@ -46,7 +67,7 @@ function LandingPage() {
   const [formData, setFormData] = useState({
     name: "",
     email: "",
-    role: "Program owner",
+    role: roleOptions[0],
   });
   const [status, setStatus] = useState("idle");
   const [message, setMessage] = useState("");
@@ -84,7 +105,7 @@ function LandingPage() {
 
     if (!formData.email.trim()) {
       setStatus("error");
-      setMessage("Add an email address so we know where to send access.");
+      setMessage("請留下 Email，我們才能協助你設定工作區。");
       return;
     }
 
@@ -101,17 +122,17 @@ function LandingPage() {
       });
 
       setStatus("success");
-      setMessage("You are on the early access list. We will be in touch soon.");
+      setMessage("已收到資料，我們會再與你聯絡導入方式。");
       setFormData({
         name: "",
         email: "",
-        role: "Program owner",
+        role: roleOptions[0],
       });
     } catch (error) {
       console.error("Could not save early access lead:", error);
       setStatus("error");
       setMessage(
-        "The page is connected, but Firestore is not accepting signups yet. Check the Firebase rules and try again.",
+        "目前無法送出資料。請確認 Firebase rules 已發布後再試一次。",
       );
     }
   };
@@ -122,28 +143,33 @@ function LandingPage() {
         <img
           className="hero-image"
           src={heroImage}
-          alt="Afterschool payment dashboard on a laptop beside a mobile payment screen"
+          alt="補習班收費管理系統畫面"
         />
         <div className="hero-shade" />
-        <header className="site-header" aria-label="Primary navigation">
-          <Link className="brand" to="/" aria-label="Afterschool Pay home">
+        <header className="site-header" aria-label="主要導覽">
+          <Link className="brand" to="/" aria-label="Afterschool Pay 首頁">
             <span className="brand-mark" aria-hidden="true">
               AP
             </span>
-            <span>Afterschool Pay</span>
+            <span>
+              Afterschool Pay
+              <small>補習班帳務管理</small>
+            </span>
           </Link>
-          <nav className="nav-links" aria-label="Page sections">
-            <a href="#platform">Platform</a>
-            <a href="#workflow">Workflow</a>
-            <a href="#early-access">Early access</a>
+          <nav className="nav-links" aria-label="頁面區塊">
+            <a href="#platform">功能</a>
+            <a href="#workflow">流程</a>
+            <a href="#early-access">開始使用</a>
           </nav>
           <div className="site-header-actions">
             {currentUser ? (
               <div className="user-chip">
-                <span>{currentUser.email || "Signed in"}</span>
-                <Link to="/dashboard">Dashboard</Link>
+                <span>
+                  {currentUser.displayName || currentUser.email || "已登入"}
+                </span>
+                <Link to="/dashboard">控制台</Link>
                 <button type="button" onClick={handleSignOut}>
-                  Log out
+                  登出
                 </button>
               </div>
             ) : (
@@ -152,54 +178,53 @@ function LandingPage() {
                 onClick={() => setShowLogin(true)}
                 type="button"
               >
-                Log in
+                登入
               </button>
             )}
           </div>
         </header>
 
         <div className="hero-content" id="top">
-          <p className="eyebrow">Payments and balances for enrichment teams</p>
-          <h1 id="hero-title">Afterschool Pay</h1>
+          <p className="eyebrow">給台灣補習班的收費、收據與薪資工作台</p>
+          <h1 id="hero-title">補習班收費系統</h1>
           <p className="hero-copy">
-            Afterschool programs, summer camps, and enrichment providers that
-            need parent payments, balances, and weekly reconciliation to stay in
-            sync.
+            從學生課程、雜項費用、繳費通知單，到每日收支與老師薪資，
+            讓一校、二校、三校可以用同一套資料管理現場帳務。
           </p>
-          <div className="hero-actions" aria-label="Landing page actions">
-            <a className="primary-action" href="#early-access">
-              Join early access
-            </a>
-            <a className="secondary-action" href="#workflow">
-              See the workflow
-            </a>
-            {!currentUser ? (
+          <div className="hero-actions" aria-label="首頁主要動作">
+            {currentUser ? (
+              <Link className="primary-action" to="/dashboard">
+                進入控制台
+              </Link>
+            ) : (
               <button
-                className="secondary-action"
+                className="primary-action"
                 onClick={() => setShowLogin(true)}
                 type="button"
               >
-                Log in or sign up
+                登入或建立帳號
               </button>
-            ) : (
-              <Link className="secondary-action" to="/dashboard">
-                Open dashboard
-              </Link>
             )}
+            <a className="secondary-action" href="#workflow">
+              查看使用流程
+            </a>
+            <a className="secondary-action" href="#early-access">
+              導入協助
+            </a>
           </div>
         </div>
 
-        <div className="hero-proof" aria-label="Core product areas">
-          <span>Parent payment links</span>
-          <span>Live family balances</span>
-          <span>Weekly payout records</span>
+        <div className="hero-proof" aria-label="核心功能">
+          <span>繳費通知單與收據</span>
+          <span>跨分校學生帳戶</span>
+          <span>老師月薪 / 8 堂課薪資</span>
         </div>
       </section>
 
       <section className="section intro-section" id="platform">
         <div className="section-heading">
-          <p className="eyebrow">Built for the hour after the bell</p>
-          <h2>One ledger for every family, program, and school site.</h2>
+          <p className="eyebrow">從 Excel 過渡到可長期使用的系統</p>
+          <h2>把補習班每天真的會做的帳務流程整理在一起。</h2>
         </div>
         <div className="benefit-grid">
           {benefits.map((benefit) => (
@@ -213,18 +238,21 @@ function LandingPage() {
 
       <section className="workflow-band" id="workflow">
         <div className="workflow-copy">
-          <p className="eyebrow">From request to reconciliation</p>
-          <h2>Make the payment trail clear before pickup gets crowded.</h2>
+          <p className="eyebrow">工作流程</p>
+          <h2>從第一次匯入資料，到每天收款與列印都能接續下去。</h2>
           <p>
-            Afterschool Pay keeps each request tied to the right family,
-            student, program, and school site from the moment money moves.
+            系統會先建立組織與分校，再讓每個分校管理自己的班級、學生、
+            雜項費用與通知單。付款與薪資則集中到每日收支處理。
           </p>
         </div>
         <ol className="workflow-list">
           {workflows.map((step, index) => (
-            <li key={step}>
+            <li key={step.title}>
               <span>{String(index + 1).padStart(2, "0")}</span>
-              <p>{step}</p>
+              <div>
+                <h3>{step.title}</h3>
+                <p>{step.text}</p>
+              </div>
             </li>
           ))}
         </ol>
@@ -232,22 +260,27 @@ function LandingPage() {
 
       <section className="early-access-section" id="early-access">
         <div className="section-heading compact">
-          <p className="eyebrow">Private beta</p>
-          <h2>Start with the programs that still reconcile by hand.</h2>
+          <p className="eyebrow">開始使用</p>
+          <h2>可以先建立組織，也可以請我們協助整理第一份資料。</h2>
           <p>
-            Collect your first leads here while the product backend, auth, and
-            payment flows come online.
+            第一次通常會從既有 Excel 匯入班級與學生。匯入後資料會存進
+            Firebase，之後就不需要再依賴 Excel 才能開通知單或管理收款。
           </p>
+          <div className="onboarding-list" aria-label="導入重點">
+            <span>建立組織後負責人成為等級 1</span>
+            <span>每個分校有自己的雜項費用表</span>
+            <span>每日收支負責付款、薪資與列印</span>
+          </div>
         </div>
 
         <form className="lead-form" onSubmit={handleSubmit}>
           <label>
-            <span>Name</span>
+            <span>姓名</span>
             <input
               autoComplete="name"
               name="name"
               onChange={handleChange}
-              placeholder="Your name"
+              placeholder="例如：陳主任"
               type="text"
               value={formData.name}
             />
@@ -258,23 +291,22 @@ function LandingPage() {
               autoComplete="email"
               name="email"
               onChange={handleChange}
-              placeholder="you@example.com"
+              placeholder="name@example.com"
               required
               type="email"
               value={formData.email}
             />
           </label>
           <label>
-            <span>Role</span>
+            <span>角色</span>
             <select name="role" onChange={handleChange} value={formData.role}>
-              <option>Program owner</option>
-              <option>School administrator</option>
-              <option>Bookkeeper</option>
-              <option>Parent coordinator</option>
+              {roleOptions.map((role) => (
+                <option key={role}>{role}</option>
+              ))}
             </select>
           </label>
           <button className="submit-button" disabled={status === "loading"}>
-            {status === "loading" ? "Saving..." : "Request access"}
+            {status === "loading" ? "送出中..." : "聯絡導入協助"}
           </button>
           {message ? (
             <p className={`form-message ${status}`} role="status">
@@ -285,8 +317,8 @@ function LandingPage() {
       </section>
 
       <footer className="site-footer">
-        <p>Afterschool Pay</p>
-        <a href="mailto:hello@afterschoolpay.com">hello@afterschoolpay.com</a>
+        <p>Afterschool Pay 補習班帳務管理</p>
+        <a href="mailto:hello@afterschoolpay.com">聯絡我們</a>
       </footer>
       <LoginModal open={showLogin} onClose={() => setShowLogin(false)} />
     </main>
@@ -371,6 +403,25 @@ function App() {
             }
           >
             <TeamAccessPage />
+          </Suspense>
+        }
+      />
+      <Route
+        path="/profile-setup"
+        element={
+          <Suspense
+            fallback={
+              <main className="auth-page">
+                <div className="dashboard-loading">
+                  <span className="brand-mark dark" aria-hidden="true">
+                    AP
+                  </span>
+                  <p>正在載入帳號資料...</p>
+                </div>
+              </main>
+            }
+          >
+            <ProfileSetupPage />
           </Suspense>
         }
       />

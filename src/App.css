@@ -61,6 +61,18 @@
   font-weight: 800;
 }
 
+.brand > span:last-child {
+  display: grid;
+  gap: 2px;
+  line-height: 1.12;
+}
+
+.brand small {
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 11px;
+  font-weight: 750;
+}
+
 .brand-mark {
   display: inline-grid;
   width: 40px;
@@ -89,7 +101,7 @@
 }
 
 .hero-content {
-  width: min(620px, 100%);
+  width: min(700px, 100%);
   max-width: 1180px;
   margin: auto;
   padding: 78px 0 54px;
@@ -103,19 +115,19 @@
   font-weight: 800;
   line-height: 1.2;
   letter-spacing: 0;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .hero-content h1 {
   margin: 0;
   color: #ffffff;
-  font-size: clamp(52px, 9vw, 104px);
-  line-height: 0.95;
+  font-size: clamp(44px, 7vw, 88px);
+  line-height: 1.05;
   letter-spacing: 0;
 }
 
 .hero-copy {
-  width: min(590px, 100%);
+  width: min(650px, 100%);
   margin: 24px 0 0;
   color: rgba(255, 255, 255, 0.82);
   font-size: clamp(18px, 2vw, 22px);
@@ -178,7 +190,7 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1px;
-  width: min(880px, 100%);
+  width: min(980px, 100%);
   max-width: 1180px;
   margin: 0 auto;
   overflow: hidden;
@@ -208,6 +220,7 @@
 
 .intro-section {
   background: var(--paper);
+  padding-top: clamp(44px, 6vw, 72px);
 }
 
 .section-heading,
@@ -235,8 +248,8 @@
 .workflow-copy h2 {
   margin: 0;
   color: var(--ink);
-  font-size: clamp(34px, 5vw, 62px);
-  line-height: 1;
+  font-size: clamp(32px, 4.8vw, 56px);
+  line-height: 1.08;
   letter-spacing: 0;
 }
 
@@ -297,7 +310,7 @@
   display: grid;
   grid-template-columns: 58px minmax(0, 1fr);
   gap: 18px;
-  align-items: center;
+  align-items: start;
   min-height: 78px;
   padding: 18px;
   border: 1px solid var(--line);
@@ -317,11 +330,19 @@
   font-weight: 900;
 }
 
-.workflow-list p {
+.workflow-list h3 {
   margin: 0;
   color: var(--ink);
-  font-weight: 750;
-  line-height: 1.45;
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.workflow-list p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.55;
 }
 
 .early-access-section {
@@ -336,11 +357,32 @@
 .lead-form {
   display: grid;
   gap: 16px;
+  align-self: start;
   padding: 24px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #ffffff;
   box-shadow: 0 18px 48px rgba(14, 33, 48, 0.08);
+}
+
+.onboarding-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.onboarding-list span {
+  display: flex;
+  align-items: center;
+  min-height: 42px;
+  border-left: 4px solid var(--teal-dark);
+  border-radius: 8px;
+  background: #f6fbfa;
+  color: var(--ink);
+  padding: 10px 12px;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.45;
 }
 
 .lead-form label {
@@ -716,6 +758,41 @@
   text-align: center;
 }
 
+.profile-setup-card {
+  padding-top: 8px;
+}
+
+.profile-setup-card .dashboard-kicker {
+  text-align: center;
+}
+
+.profile-setup-card h1 {
+  margin-bottom: 12px;
+}
+
+.profile-setup-copy {
+  margin: 0 0 22px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 750;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.profile-setup-cancel {
+  display: block;
+  margin-top: 14px;
+  color: var(--teal-dark);
+  font-size: 13px;
+  font-weight: 900;
+  text-align: center;
+  text-decoration: none;
+}
+
+.profile-setup-cancel:hover {
+  color: var(--ink);
+}
+
 .auth-banner {
   margin-bottom: 16px;
   padding: 12px 14px;
@@ -988,6 +1065,7 @@
 
 .dashboard-user-row {
   min-width: 0;
+  flex-wrap: wrap;
   justify-content: flex-end;
 }
 
@@ -2513,6 +2591,14 @@
   gap: 14px;
 }
 
+.table-action-button.primary {
+  background: var(--teal-dark);
+}
+
+.table-action-button.primary:hover {
+  background: #0b746e;
+}
+
 .table-panel-action-button {
   flex: 0 0 auto;
   margin-top: 2px;
@@ -3837,6 +3923,82 @@
   margin-top: 14px;
 }
 
+.ledger-payment-history {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #e3ecec;
+  border-radius: 8px;
+  background: #f9fcfb;
+  padding: 14px;
+}
+
+.ledger-payment-history-heading,
+.ledger-payment-card,
+.payment-modal-summary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ledger-payment-history-heading h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.ledger-payment-history-heading > span {
+  border-radius: 999px;
+  background: #e8f5f3;
+  color: var(--teal-dark);
+  padding: 5px 9px;
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.ledger-payment-list {
+  display: grid;
+  gap: 8px;
+}
+
+.ledger-payment-card {
+  align-items: center;
+  border: 1px solid #d8e7e5;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 10px;
+}
+
+.ledger-payment-card div {
+  min-width: 0;
+}
+
+.ledger-payment-card strong {
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.ledger-payment-card p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+.ledger-payment-card > span {
+  border-radius: 999px;
+  background: #eef6f4;
+  color: var(--muted);
+  padding: 5px 8px;
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
 .ledger-invoice-card {
   display: grid;
   gap: 12px;
@@ -3904,6 +4066,76 @@
   padding: 0 10px;
   font: inherit;
   font-size: 13px;
+}
+
+.payment-modal {
+  max-width: 760px;
+}
+
+.payment-modal-summary {
+  flex-wrap: wrap;
+  border: 1px solid #e3ecec;
+  border-radius: 8px;
+  background: #f9fcfb;
+  padding: 12px;
+}
+
+.payment-modal-summary span {
+  display: grid;
+  min-width: 140px;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.payment-modal-summary strong {
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.payment-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.payment-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.payment-form input,
+.payment-form select,
+.payment-form textarea {
+  width: 100%;
+  border: 1px solid #cfdedc;
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--ink);
+  padding: 0 10px;
+  font: inherit;
+  font-size: 14px;
+}
+
+.payment-form input,
+.payment-form select {
+  min-height: 42px;
+}
+
+.payment-form textarea {
+  min-height: 86px;
+  padding-top: 10px;
+  resize: vertical;
+}
+
+.payment-form-full {
+  grid-column: 1 / -1;
 }
 
 .ledger-empty-profile {
@@ -4478,6 +4710,15 @@
   .ledger-invoice-actions {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .ledger-payment-card {
+    display: grid;
+    justify-items: start;
+  }
+
+  .payment-form {
+    grid-template-columns: 1fr;
   }
 
   .table-panel-actions {

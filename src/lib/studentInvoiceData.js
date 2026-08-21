@@ -6,6 +6,7 @@ import {
   onSnapshot,
   orderBy,
   query,
+  runTransaction,
   serverTimestamp,
   setDoc,
   where,
@@ -21,6 +22,14 @@ export const INVOICE_STATUS_LABELS = {
   void: "作廢",
 };
 
+export const PAYMENT_METHOD_LABELS = {
+  cash: "現金",
+  transfer: "轉帳",
+  card: "刷卡",
+  linePay: "LINE Pay",
+  other: "其他",
+};
+
 const requireFirestore = () => {
   if (!realtimeFirestore) {
     throw new Error("Firebase 尚未設定完成，無法儲存繳費通知單。");
@@ -33,6 +42,10 @@ const toPlainData = (value) => JSON.parse(JSON.stringify(value));
 
 export function getInvoiceStatusLabel(status) {
   return INVOICE_STATUS_LABELS[status] || status || "未付款";
+}
+
+export function getPaymentMethodLabel(method) {
+  return PAYMENT_METHOD_LABELS[method] || method || "未記錄";
 }
 
 export function createStudentAccountId() {
@@ -65,6 +78,17 @@ function getStudentInvoicesCollection(db, orgId, studentId) {
     "students",
     studentId,
     "invoices",
+  );
+}
+
+function getStudentPaymentsCollection(db, orgId, studentId) {
+  return collection(
+    db,
+    "organizations",
+    orgId,
+    "students",
+    studentId,
+    "payments",
   );
 }
 
@@ -188,6 +212,12 @@ function getBillingPeriod(invoice) {
     endDate: dates.at(-1) || "",
     startDate: dates[0] || "",
   };
+}
+
+function createReceiptNumber(paymentRef, receivedAtIso) {
+  return `RECEIPT-${receivedAtIso.slice(0, 10).replaceAll("-", "")}-${paymentRef.id
+    .slice(0, 6)
+    .toUpperCase()}`;
 }
 
 export async function syncStudentAccountsFromClassSheets({
@@ -393,6 +423,45 @@ export function subscribeStudentInvoices({
   );
 }
 
+export function subscribeStudentPayments({
+  onChange,
+  onError,
+  orgId = DEFAULT_ORG_ID,
+  studentId = "",
+}) {
+  if (!studentId) {
+    return () => {};
+  }
+
+  const db = requireFirestore();
+  const paymentQuery = query(
+    getStudentPaymentsCollection(db, orgId, studentId),
+    orderBy("receivedAtIso", "desc"),
+  );
+
+  return onSnapshot(
+    paymentQuery,
+    { includeMetadataChanges: true },
+    (snapshot) => {
+      onChange(
+        snapshot.docs.map((record) => ({
+          id: record.id,
+          ...record.data(),
+          metadata: {
+            fromCache: snapshot.metadata?.fromCache || false,
+            hasPendingWrites: snapshot.metadata?.hasPendingWrites || false,
+          },
+        })),
+      );
+    },
+    (error) => {
+      if (onError) {
+        onError(error);
+      }
+    },
+  );
+}
+
 export function subscribeOrganizationStudents({
   branchIds = [],
   canViewAllBranches = false,
@@ -462,7 +531,12 @@ export async function updateStudentInvoiceStatus({
   }
 
   const db = requireFirestore();
-  const normalizedTotal = Number(total) || 0;
+  const invoiceRef = doc(getStudentInvoicesCollection(db, orgId, studentId), invoiceId);
+  const invoiceSnapshot = await getDoc(invoiceRef);
+  const invoiceData = invoiceSnapshot.exists() ? invoiceSnapshot.data() : {};
+  const normalizedTotal = Number(invoiceData.total ?? total) || 0;
+  const currentPaidTotal = Number(invoiceData.paidTotal) || 0;
+  const currentBalance = Math.max(normalizedTotal - currentPaidTotal, 0);
   const paymentFields =
     status === "paid"
       ? {
@@ -476,14 +550,14 @@ export async function updateStudentInvoiceStatus({
             voidedAt: serverTimestamp(),
           }
         : {
-            balance: normalizedTotal,
-            paidAt: null,
-            paidTotal: 0,
+            balance: currentBalance,
+            paidAt: currentBalance > 0 ? null : invoiceData.paidAt || null,
+            paidTotal: currentPaidTotal,
             voidedAt: null,
           };
 
   await setDoc(
-    doc(getStudentInvoicesCollection(db, orgId, studentId), invoiceId),
+    invoiceRef,
     {
       ...paymentFields,
       status,
@@ -492,4 +566,143 @@ export async function updateStudentInvoiceStatus({
     },
     { merge: true },
   );
+}
+
+export async function createStudentInvoicePayment({
+  amount,
+  invoice,
+  method = "cash",
+  note = "",
+  organization,
+  orgId = DEFAULT_ORG_ID,
+  receivedAtBranch,
+  receivedBy,
+  student,
+}) {
+  if (!student?.id || !invoice?.id) {
+    throw new Error("缺少學生或繳費通知單資料。");
+  }
+
+  const normalizedAmount = Math.round(Number(amount) || 0);
+
+  if (normalizedAmount <= 0) {
+    throw new Error("收款金額必須大於 0。");
+  }
+
+  const db = requireFirestore();
+  const studentId = student.id;
+  const invoiceRef = doc(getStudentInvoicesCollection(db, orgId, studentId), invoice.id);
+  const paymentRef = doc(getStudentPaymentsCollection(db, orgId, studentId));
+  const receivedAtIso = new Date().toISOString();
+  const receiptNumber = createReceiptNumber(paymentRef, receivedAtIso);
+  let savedPayment = null;
+
+  await runTransaction(db, async (transaction) => {
+    const invoiceSnapshot = await transaction.get(invoiceRef);
+
+    if (!invoiceSnapshot.exists()) {
+      throw new Error("找不到繳費通知單。");
+    }
+
+    const invoiceData = invoiceSnapshot.data();
+    const invoiceStatus = invoiceData.status || "unpaid";
+
+    if (invoiceStatus === "void") {
+      throw new Error("作廢的繳費通知單不能收款。");
+    }
+
+    const invoiceTotal = Number(invoiceData.total) || 0;
+    const paidBefore = Number(invoiceData.paidTotal) || 0;
+    const balanceBefore = Number(invoiceData.balance ?? invoiceTotal) || 0;
+
+    if (balanceBefore <= 0 || invoiceStatus === "paid") {
+      throw new Error("此繳費通知單已無未收金額。");
+    }
+
+    if (normalizedAmount > balanceBefore) {
+      throw new Error("收款金額不能大於未收金額。");
+    }
+
+    const paidTotal = Math.min(invoiceTotal, paidBefore + normalizedAmount);
+    const balance = Math.max(balanceBefore - normalizedAmount, 0);
+    const nextStatus = balance <= 0 ? "paid" : invoiceStatus;
+    const paymentData = {
+      amount: normalizedAmount,
+      balanceAfter: balance,
+      balanceBefore,
+      createdAt: serverTimestamp(),
+      id: paymentRef.id,
+      invoiceId: invoice.id,
+      invoiceLineItems: toPlainData(invoiceData.lineItems || []),
+      invoiceNumber: invoiceData.invoiceNumber || invoice.id,
+      invoiceSourceBranchId: invoiceData.sourceBranchId || "",
+      invoiceSourceBranchSnapshot: {
+        id: invoiceData.sourceBranchSnapshot?.id || invoiceData.sourceBranchId || "",
+        name: invoiceData.sourceBranchSnapshot?.name || "",
+        shortName: invoiceData.sourceBranchSnapshot?.shortName || "",
+      },
+      invoiceTotal,
+      method,
+      methodLabel: getPaymentMethodLabel(method),
+      note: String(note || "").trim(),
+      organizationSnapshot: {
+        id: organization?.id || invoiceData.organizationSnapshot?.id || orgId,
+        name: organization?.name || invoiceData.organizationSnapshot?.name || "",
+      },
+      paidBefore,
+      receiptNumber,
+      receivedAt: serverTimestamp(),
+      receivedAtBranchId: receivedAtBranch?.id || "",
+      receivedAtBranchSnapshot: {
+        id: receivedAtBranch?.id || "",
+        name: receivedAtBranch?.name || "",
+        shortName: receivedAtBranch?.shortName || "",
+      },
+      receivedAtIso,
+      receivedByEmail: receivedBy?.email || "",
+      receivedByName: receivedBy?.displayName || receivedBy?.email || "",
+      receivedByUid: receivedBy?.uid || "",
+      status: "completed",
+      studentId,
+      studentSnapshot: {
+        id: studentId,
+        name: student.name || invoiceData.studentSnapshot?.name || "",
+        studentNumber:
+          student.primaryLegacyNumber ||
+          invoiceData.studentSnapshot?.studentNumber ||
+          "",
+      },
+      updatedAt: serverTimestamp(),
+    };
+    const invoiceUpdate = {
+      balance,
+      lastPaymentAt: serverTimestamp(),
+      lastPaymentId: paymentRef.id,
+      paidTotal,
+      paymentIds: arrayUnion(paymentRef.id),
+      status: nextStatus,
+      statusUpdatedByUid: receivedBy?.uid || "",
+      updatedAt: serverTimestamp(),
+    };
+
+    if (nextStatus === "paid") {
+      invoiceUpdate.paidAt = serverTimestamp();
+    }
+
+    transaction.set(paymentRef, paymentData);
+    transaction.set(invoiceRef, invoiceUpdate, { merge: true });
+
+    savedPayment = {
+      ...paymentData,
+      createdAt: null,
+      receivedAt: null,
+      updatedAt: null,
+    };
+  });
+
+  return {
+    payment: savedPayment,
+    paymentId: paymentRef.id,
+    receiptNumber,
+  };
 }

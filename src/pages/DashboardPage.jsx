@@ -4,6 +4,7 @@ import { Link, Navigate, useNavigate } from "react-router-dom";
 import { auth } from "../lib/firebase";
 import {
   getRoleLevelLabel,
+  isDisplayNameSetupRequiredError,
   isOrganizationSetupRequiredError,
   loadOrganizationWorkspace,
 } from "../lib/orgData";
@@ -31,12 +32,6 @@ const modules = [
     path: "/students-courses",
   },
   {
-    id: "branch-transfer",
-    title: "分校轉帳",
-    description: "把共同支出或付款調整到正確分校，並保留清楚紀錄。",
-    permission: "canTransferBetweenBranches",
-  },
-  {
     id: "team-access",
     title: "團隊權限",
     description: "邀請員工並設定每個人的權限等級與可查看分校。",
@@ -60,12 +55,16 @@ const localizedBranches = {
   },
 };
 
-function getDisplayName(user) {
-  if (user.displayName) {
+function getDisplayName(profile, user) {
+  if (profile?.displayName) {
+    return profile.displayName;
+  }
+
+  if (user?.displayName) {
     return user.displayName;
   }
 
-  if (user.email) {
+  if (user?.email) {
     return user.email.split("@")[0];
   }
 
@@ -138,6 +137,11 @@ function DashboardPage() {
         console.error("Unable to load organization workspace:", error);
 
         if (active) {
+          if (isDisplayNameSetupRequiredError(error)) {
+            navigate("/profile-setup?next=/dashboard", { replace: true });
+            return;
+          }
+
           if (isOrganizationSetupRequiredError(error)) {
             navigate("/organization-setup", { replace: true });
             return;
@@ -226,7 +230,17 @@ function DashboardPage() {
           <span>Afterschool Pay</span>
         </Link>
         <div className="dashboard-user-row">
-          <span className="dashboard-email">{currentUser?.email}</span>
+          <span className="dashboard-email">
+            {workspace.profile?.displayName ||
+              currentUser?.displayName ||
+              currentUser?.email}
+          </span>
+          <Link
+            className="dashboard-text-link"
+            to="/profile-setup?edit=1&next=/dashboard"
+          >
+            修改姓名
+          </Link>
           <button
             className="dashboard-sign-out"
             onClick={handleSignOut}
@@ -247,7 +261,9 @@ function DashboardPage() {
         <div className="dashboard-hero-row">
           <div>
             <p className="dashboard-kicker">{workspace.organization.name}</p>
-            <h1 id="dashboard-title">歡迎，{getDisplayName(currentUser)}</h1>
+            <h1 id="dashboard-title">
+              歡迎，{getDisplayName(workspace.profile, currentUser)}
+            </h1>
             <p className="dashboard-subtitle">
               這是第一版登入後的管理後台，先整理分校、每日收支、老師薪資與團隊權限。
             </p>

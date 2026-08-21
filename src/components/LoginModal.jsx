@@ -49,7 +49,7 @@ function LoginModal({ open, onClose }) {
       navigate("/dashboard");
     } catch (error) {
       console.error("Google login failed in modal:", error);
-      setEmailError("Google sign in is not ready yet. Check Firebase setup.");
+      setEmailError("Google 登入尚未設定完成，請確認 Firebase 設定。");
     } finally {
       setGoogleLoading(false);
     }
@@ -60,12 +60,12 @@ function LoginModal({ open, onClose }) {
     setEmailError("");
 
     if (!trimmedEmail) {
-      setEmailError("Email is required");
+      setEmailError("請輸入 Email");
       return;
     }
 
     if (!/\S+@\S+\.\S+/.test(trimmedEmail)) {
-      setEmailError("Invalid email address");
+      setEmailError("Email 格式不正確");
       return;
     }
 
@@ -88,16 +88,14 @@ function LoginModal({ open, onClose }) {
       }
 
       if (hasGoogle) {
-        setEmailError(
-          "This email uses Google sign in. Please continue with Google.",
-        );
+        setEmailError("這個 Email 使用 Google 登入，請按上方 Google 按鈕。");
         return;
       }
 
-      setEmailError("This email is linked to a different sign in method.");
+      setEmailError("這個 Email 使用其他登入方式。");
     } catch (error) {
       console.error("Unable to check sign in methods:", error);
-      setEmailError("Unable to check this email right now. Please try again.");
+      setEmailError("目前無法檢查 Email，請稍後再試。");
     } finally {
       setCheckingEmail(false);
     }
@@ -120,7 +118,7 @@ function LoginModal({ open, onClose }) {
         role="dialog"
       >
         <button
-          aria-label="Close login dialog"
+          aria-label="關閉登入視窗"
           className="auth-close-button"
           onClick={onClose}
           type="button"
@@ -128,10 +126,10 @@ function LoginModal({ open, onClose }) {
           x
         </button>
 
-        <h2 id="login-modal-title">Log in or sign up</h2>
+        <h2 id="login-modal-title">登入或建立帳號</h2>
         <p>
-          Enter your email to get started, or continue with Google if your
-          program already uses it.
+          請輸入 Email 開始使用。若你的帳號已綁定 Google，也可以直接用
+          Google 登入。
         </p>
 
         <button
@@ -143,17 +141,17 @@ function LoginModal({ open, onClose }) {
           <span className="provider-mark" aria-hidden="true">
             G
           </span>
-          <span>{googleLoading ? "Signing in..." : "Continue with Google"}</span>
+          <span>{googleLoading ? "登入中..." : "使用 Google 繼續"}</span>
         </button>
 
         <div className="auth-divider">
           <span />
-          <strong>OR</strong>
+          <strong>或</strong>
           <span />
         </div>
 
         <label className="auth-label" htmlFor="login-email">
-          Email address
+          Email
         </label>
         <input
           autoComplete="email"
@@ -177,12 +175,11 @@ function LoginModal({ open, onClose }) {
           onClick={handleContinue}
           type="button"
         >
-          {checkingEmail ? "Checking..." : "Continue"}
+          {checkingEmail ? "檢查中..." : "繼續"}
         </button>
 
         <p className="auth-fine-print">
-          By continuing, you agree to Afterschool Pay account and payment
-          notices.
+          繼續代表你同意建立 Afterschool Pay 帳號並接收系統通知。
         </p>
       </section>
     </div>

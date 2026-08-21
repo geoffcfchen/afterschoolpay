@@ -22,21 +22,21 @@ function EmailRegisterPage() {
     const nextErrors = {};
 
     if (!email) {
-      nextErrors.email = "Email is required";
+      nextErrors.email = "請輸入 Email";
     } else if (!/\S+@\S+\.\S+/.test(email)) {
-      nextErrors.email = "Invalid email address";
+      nextErrors.email = "Email 格式不正確";
     }
 
     if (!password) {
-      nextErrors.password = "Password is required";
+      nextErrors.password = "請輸入密碼";
     } else if (password.length < 8) {
-      nextErrors.password = "Password must be at least 8 characters";
+      nextErrors.password = "密碼至少需要 8 個字元";
     }
 
     if (!confirmPassword) {
-      nextErrors.confirmPassword = "Please confirm your password";
+      nextErrors.confirmPassword = "請再次輸入密碼";
     } else if (confirmPassword !== password) {
-      nextErrors.confirmPassword = "Passwords do not match";
+      nextErrors.confirmPassword = "兩次輸入的密碼不一致";
     }
 
     return nextErrors;
@@ -60,8 +60,8 @@ function EmailRegisterPage() {
       console.error("Could not create account:", error);
       setSignupError(
         error.code === "auth/email-already-in-use"
-          ? "This email is already in use. Try logging in instead."
-          : "Could not create your account. Please try again.",
+          ? "這個 Email 已經註冊，請改用登入。"
+          : "目前無法建立帳號，請稍後再試。",
       );
     } finally {
       setSubmitting(false);
@@ -84,11 +84,11 @@ function EmailRegisterPage() {
           <div className="auth-banner error">{signupError}</div>
         ) : null}
 
-        <h1 id="register-title">Create your password</h1>
+        <h1 id="register-title">建立密碼</h1>
 
         <form onSubmit={handleSubmit} noValidate>
           <div className="auth-field-block">
-            <label className="auth-label">Email address</label>
+            <label className="auth-label">Email</label>
             {isEditingEmail ? (
               <>
                 <input
@@ -110,7 +110,7 @@ function EmailRegisterPage() {
               <div className="email-pill">
                 <span title={email}>{email}</span>
                 <button type="button" onClick={() => setIsEditingEmail(true)}>
-                  Edit
+                  修改
                 </button>
               </div>
             )}
@@ -118,7 +118,7 @@ function EmailRegisterPage() {
 
           <div className="auth-field-block">
             <label className="auth-label" htmlFor="register-password">
-              Password
+              密碼
             </label>
             <div className="password-shell">
               <input
@@ -128,16 +128,16 @@ function EmailRegisterPage() {
                   setPassword(event.target.value);
                   setErrors((current) => ({ ...current, password: "" }));
                 }}
-                placeholder="Password"
+                placeholder="至少 8 個字元"
                 type={showPassword ? "text" : "password"}
                 value={password}
               />
               <button
-                aria-label={showPassword ? "Hide password" : "Show password"}
+                aria-label={showPassword ? "隱藏密碼" : "顯示密碼"}
                 onClick={() => setShowPassword((current) => !current)}
                 type="button"
               >
-                {showPassword ? "Hide" : "Show"}
+                {showPassword ? "隱藏" : "顯示"}
               </button>
             </div>
             {errors.password ? (
@@ -147,7 +147,7 @@ function EmailRegisterPage() {
 
           <div className="auth-field-block">
             <label className="auth-label" htmlFor="register-confirm-password">
-              Confirm password
+              確認密碼
             </label>
             <div className="password-shell">
               <input
@@ -160,20 +160,20 @@ function EmailRegisterPage() {
                     confirmPassword: "",
                   }));
                 }}
-                placeholder="Confirm password"
+                placeholder="再次輸入密碼"
                 type={showConfirmPassword ? "text" : "password"}
                 value={confirmPassword}
               />
               <button
                 aria-label={
                   showConfirmPassword
-                    ? "Hide confirm password"
-                    : "Show confirm password"
+                    ? "隱藏確認密碼"
+                    : "顯示確認密碼"
                 }
                 onClick={() => setShowConfirmPassword((current) => !current)}
                 type="button"
               >
-                {showConfirmPassword ? "Hide" : "Show"}
+                {showConfirmPassword ? "隱藏" : "顯示"}
               </button>
             </div>
             {errors.confirmPassword ? (
@@ -182,15 +182,15 @@ function EmailRegisterPage() {
           </div>
 
           <button className="auth-page-button" disabled={submitting}>
-            {submitting ? "Creating..." : "Create account"}
+            {submitting ? "建立中..." : "建立帳號"}
           </button>
         </form>
       </section>
 
       <footer className="auth-terms-row">
-        <Link to="/">Back to home</Link>
+        <Link to="/">回首頁</Link>
         <span>|</span>
-        <Link to={`/login?email=${encodeURIComponent(email)}`}>Log in</Link>
+        <Link to={`/login?email=${encodeURIComponent(email)}`}>登入</Link>
       </footer>
     </main>
   );

@@ -7,6 +7,7 @@ import {
   ROLE_LEVELS,
   getRoleLevelLabel,
   getRolePresetPermissions,
+  isDisplayNameSetupRequiredError,
   isOrganizationSetupRequiredError,
   loadOrganizationMembers,
   loadOrganizationWorkspace,
@@ -109,6 +110,11 @@ function TeamAccessPage() {
         console.error("Unable to load team access:", error);
 
         if (active) {
+          if (isDisplayNameSetupRequiredError(error)) {
+            navigate("/profile-setup?next=/team-access", { replace: true });
+            return;
+          }
+
           if (isOrganizationSetupRequiredError(error)) {
             navigate("/organization-setup", { replace: true });
             return;
@@ -318,7 +324,17 @@ function TeamAccessPage() {
           <Link className="dashboard-text-link" to="/dashboard">
             回管理後台
           </Link>
-          <span className="dashboard-email">{currentUser?.email}</span>
+          <span className="dashboard-email">
+            {workspace.profile?.displayName ||
+              currentUser?.displayName ||
+              currentUser?.email}
+          </span>
+          <Link
+            className="dashboard-text-link"
+            to="/profile-setup?edit=1&next=/team-access"
+          >
+            修改姓名
+          </Link>
           <button
             className="dashboard-sign-out"
             onClick={handleSignOut}

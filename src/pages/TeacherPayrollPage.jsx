@@ -3,6 +3,7 @@ import { onAuthStateChanged, signOut } from "firebase/auth";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { auth } from "../lib/firebase";
 import {
+  isDisplayNameSetupRequiredError,
   isOrganizationSetupRequiredError,
   loadOrganizationWorkspace,
 } from "../lib/orgData";
@@ -164,6 +165,13 @@ function TeacherPayrollPage() {
         console.error("Unable to load teacher payroll workspace:", error);
 
         if (active) {
+          if (isDisplayNameSetupRequiredError(error)) {
+            navigate("/profile-setup?next=/teacher-payroll", {
+              replace: true,
+            });
+            return;
+          }
+
           if (isOrganizationSetupRequiredError(error)) {
             navigate("/organization-setup", { replace: true });
             return;
@@ -684,7 +692,17 @@ function TeacherPayrollPage() {
           <Link className="dashboard-text-link" to="/daily-ledger">
             每日收支
           </Link>
-          <span className="dashboard-email">{currentUser?.email}</span>
+          <span className="dashboard-email">
+            {workspace.profile?.displayName ||
+              currentUser?.displayName ||
+              currentUser?.email}
+          </span>
+          <Link
+            className="dashboard-text-link"
+            to="/profile-setup?edit=1&next=/teacher-payroll"
+          >
+            修改姓名
+          </Link>
           <button
             className="dashboard-sign-out"
             onClick={handleSignOut}

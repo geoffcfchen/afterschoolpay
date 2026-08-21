@@ -132,9 +132,7 @@ function LandingPage() {
     } catch (error) {
       console.error("Could not save early access lead:", error);
       setStatus("error");
-      setMessage(
-        "目前無法送出資料。請確認 Firebase rules 已發布後再試一次。",
-      );
+      setMessage("目前無法送出資料。請確認 Firebase rules 已發布後再試一次。");
     }
   };
 
@@ -186,7 +184,7 @@ function LandingPage() {
         </header>
 
         <div className="hero-content" id="top">
-          <p className="eyebrow">給台灣補習班的收費、收據與薪資工作台</p>
+          <p className="eyebrow">補習班的收費、收據與薪資工作台</p>
           <h1 id="hero-title">補習班收費系統</h1>
           <p className="hero-copy">
             從學生課程、雜項費用、繳費通知單，到每日收支與老師薪資，

@@ -1277,6 +1277,43 @@
   gap: 12px;
 }
 
+.module-section-list {
+  display: grid;
+  gap: 22px;
+}
+
+.module-section {
+  display: grid;
+  gap: 12px;
+}
+
+.module-section + .module-section {
+  border-top: 1px solid #e1e9e8;
+  padding-top: 20px;
+}
+
+.module-section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.module-section-heading h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 17px;
+  line-height: 1.2;
+}
+
+.module-section-heading p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
 .branch-card {
   display: grid;
   grid-template-columns: 44px minmax(0, 1fr);
@@ -1324,8 +1361,12 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.module-section-settings .module-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .module-card {
-  min-height: 176px;
+  min-height: 154px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -3621,6 +3662,12 @@
   padding: clamp(26px, 5vw, 54px) 0 72px;
 }
 
+.financial-shell {
+  width: min(1320px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: clamp(26px, 5vw, 54px) 0 72px;
+}
+
 .ledger-hero {
   margin-bottom: 18px;
 }
@@ -3658,12 +3705,18 @@
 }
 
 .ledger-workspace-grid,
-.payroll-workspace-grid {
+.payroll-workspace-grid,
+.expense-workspace-grid {
   display: grid;
   grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
   gap: 16px;
   align-items: start;
   margin-top: 4px;
+}
+
+.expense-workspace-grid {
+  grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+  margin-top: 16px;
 }
 
 .ledger-student-panel,
@@ -4102,7 +4155,15 @@
   margin-top: 14px;
 }
 
-.payment-form label {
+.expense-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.payment-form label,
+.expense-form label {
   display: grid;
   gap: 6px;
   color: var(--muted);
@@ -4112,7 +4173,8 @@
 
 .payment-form input,
 .payment-form select,
-.payment-form textarea {
+.payment-form textarea,
+.expense-form input {
   width: 100%;
   border: 1px solid #cfdedc;
   border-radius: 8px;
@@ -4124,7 +4186,8 @@
 }
 
 .payment-form input,
-.payment-form select {
+.payment-form select,
+.expense-form input {
   min-height: 42px;
 }
 
@@ -4136,6 +4199,203 @@
 
 .payment-form-full {
   grid-column: 1 / -1;
+}
+
+.expense-form-full {
+  grid-column: 1 / -1;
+}
+
+.expense-recorder-card {
+  display: grid;
+  gap: 6px;
+  border: 1px solid #e3ecec;
+  border-radius: 8px;
+  background: #f9fcfb;
+  padding: 12px;
+}
+
+.expense-recorder-card span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.expense-recorder-card strong {
+  color: var(--ink);
+  font-size: 16px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.expense-entry-panel {
+  position: sticky;
+  top: 16px;
+}
+
+.financial-filter-panel {
+  margin-bottom: 16px;
+}
+
+.financial-filter-controls {
+  display: grid;
+  grid-template-columns: 180px minmax(180px, 240px);
+  gap: 10px;
+  align-items: end;
+}
+
+.financial-filter-controls label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.financial-filter-controls input,
+.financial-filter-controls select {
+  min-height: 42px;
+  border: 1px solid #cfdedc;
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--ink);
+  padding: 0 10px;
+  font: inherit;
+  font-size: 14px;
+}
+
+.financial-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.financial-summary-card {
+  display: grid;
+  min-height: 132px;
+  align-content: center;
+  gap: 8px;
+  border: 1px solid #e3ecec;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 18px;
+}
+
+.financial-summary-card span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.financial-summary-card strong {
+  color: var(--ink);
+  font-size: clamp(24px, 3vw, 34px);
+  line-height: 1;
+}
+
+.financial-summary-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+.financial-summary-card.income {
+  border-color: #b8e7df;
+  background: #f5fffc;
+}
+
+.financial-summary-card.expense {
+  border-color: #f0c7bf;
+  background: #fffaf8;
+}
+
+.financial-summary-card.profit {
+  border-color: #b8e7df;
+  background: #effbf8;
+}
+
+.financial-summary-card.loss {
+  border-color: #f0c7bf;
+  background: #fff4f1;
+}
+
+.financial-summary-card.profit strong {
+  color: var(--teal-dark);
+}
+
+.financial-summary-card.loss strong {
+  color: #9d2c1e;
+}
+
+.financial-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.financial-all-detail-panel {
+  margin-top: 16px;
+}
+
+.financial-detail-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.financial-detail-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  border: 1px solid #e3ecec;
+  border-radius: 8px;
+  background: #f9fcfb;
+  padding: 12px;
+}
+
+.financial-detail-card strong {
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.financial-detail-card p,
+.financial-detail-card small {
+  display: block;
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.financial-amount {
+  border-radius: 999px;
+  padding: 5px 8px;
+  font-size: 12px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.financial-amount.income {
+  background: #dff8f0;
+  color: #0a6a5d;
+}
+
+.financial-amount.expense {
+  background: #fee2e2;
+  color: #9d2c1e;
+}
+
+.financial-error-list {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
 }
 
 .ledger-empty-profile {
@@ -4292,8 +4552,9 @@
 
 .monthly-additional-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 150px auto;
-  gap: 10px;
+  grid-template-columns: minmax(220px, 1fr) minmax(180px, 240px) 104px;
+  column-gap: 12px;
+  row-gap: 10px;
   align-items: end;
   border: 1px solid #e0ebea;
   border-radius: 8px;
@@ -4301,7 +4562,17 @@
   padding: 10px;
 }
 
+.monthly-additional-row label {
+  min-width: 0;
+}
+
+.monthly-additional-row input {
+  width: 100%;
+  min-width: 0;
+}
+
 .monthly-additional-row .secondary-modal-button {
+  width: 100%;
   min-height: 38px;
   border: 1px solid #cfdedc;
   border-radius: 8px;
@@ -4619,12 +4890,15 @@
   .dashboard-summary-grid,
   .workspace-grid,
   .module-grid,
+  .financial-summary-grid,
+  .financial-detail-grid,
   .team-workspace-grid,
   .team-editor-grid,
   .permission-grid,
   .first-setup-grid,
   .ledger-workspace-grid,
   .payroll-workspace-grid,
+  .expense-workspace-grid,
   .manual-student-form,
   .branch-workspace-panel,
   .import-stepper,
@@ -4666,10 +4940,12 @@
   .invoice-meta-grid,
   .ledger-summary-grid,
   .ledger-invoice-amount-grid,
+  .financial-filter-controls,
   .salary-form-grid,
   .monthly-additional-row,
   .monthly-salary-breakdown,
   .salary-slip-total-row,
+  .expense-form,
   .workspace-action-row,
   .class-course-form-row,
   .fee-option-form {
@@ -4689,6 +4965,10 @@
   }
 
   .ledger-student-panel {
+    position: static;
+  }
+
+  .expense-entry-panel {
     position: static;
   }
 

@@ -63,6 +63,15 @@ service cloud.firestore {
         );
     }
 
+    function canUseDailyLedger(orgId) {
+      return hasOrgMember(orgId)
+        && currentMember(orgId).data.status == "active"
+        && (
+          currentMember(orgId).data.roleLevel == 1
+          || currentMember(orgId).data.permissions.canRecordDailyLedger == true
+        );
+    }
+
     function canAccessBranch(orgId, branchId) {
       return currentMember(orgId).data.roleLevel == 1
         || currentMember(orgId).data.permissions.canViewAllBranches == true
@@ -182,6 +191,14 @@ service cloud.firestore {
             allow read, write: if canUseBranchStudentWorkspace(orgId, branchId)
               || isBootstrapOwner();
           }
+        }
+
+        match /expenses/{expenseId} {
+          allow read, create, update: if (
+            canUseDailyLedger(orgId)
+            && canAccessBranch(orgId, branchId)
+          ) || isBootstrapOwner();
+          allow delete: if isOrgOwner(orgId) || isBootstrapOwner();
         }
       }
 

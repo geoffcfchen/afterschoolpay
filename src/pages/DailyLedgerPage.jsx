@@ -8,6 +8,10 @@ import {
   loadOrganizationWorkspace,
 } from "../lib/orgData";
 import {
+  createBranchExpense,
+  subscribeBranchExpenses,
+} from "../lib/expenseData";
+import {
   INVOICE_STATUS_LABELS,
   PAYMENT_METHOD_LABELS,
   createStudentInvoicePayment,
@@ -79,6 +83,35 @@ function formatDateTime(value) {
   return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()} ${String(
     date.getHours(),
   ).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+function todayDateValue() {
+  const now = new Date();
+
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
+    2,
+    "0",
+  )}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
+function formatDateOnly(value) {
+  if (!value) {
+    return "未記錄";
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(value))) {
+    const [year, month, date] = String(value).split("-");
+
+    return `${year}/${Number(month)}/${Number(date)}`;
+  }
+
+  const date = typeof value?.toDate === "function" ? value.toDate() : new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "未記錄";
+  }
+
+  return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`;
 }
 
 function getShortStudentId(studentId = "") {
@@ -231,6 +264,10 @@ function getPaymentAmount(payment) {
   return Number(payment?.amount) || 0;
 }
 
+function getExpenseAmount(expense) {
+  return Number(expense?.amount) || 0;
+}
+
 function getInvoiceStatus(invoice) {
   return invoice?.status || "unpaid";
 }
@@ -303,6 +340,7 @@ function DailyLedgerPage() {
   const [statusFilter, setStatusFilter] = useState(ALL_STATUSES);
   const [updatingInvoiceId, setUpdatingInvoiceId] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
+  const [statusMessageStudentId, setStatusMessageStudentId] = useState("");
   const [printInvoice, setPrintInvoice] = useState(null);
   const [paymentRecords, setPaymentRecords] = useState([]);
   const [paymentLoadStatus, setPaymentLoadStatus] = useState("idle");
@@ -327,6 +365,16 @@ function DailyLedgerPage() {
   const [updatingSalarySlipId, setUpdatingSalarySlipId] = useState("");
   const [salaryStatusMessage, setSalaryStatusMessage] = useState("");
   const [printSalarySlip, setPrintSalarySlip] = useState(null);
+  const [expenseRecords, setExpenseRecords] = useState([]);
+  const [expenseLoadStatus, setExpenseLoadStatus] = useState("idle");
+  const [expenseLoadError, setExpenseLoadError] = useState("");
+  const [expenseForm, setExpenseForm] = useState({
+    amount: "",
+    expenseDate: todayDateValue(),
+    itemName: "",
+  });
+  const [expenseSaveStatus, setExpenseSaveStatus] = useState("idle");
+  const [expenseMessage, setExpenseMessage] = useState("");
 
   useEffect(() => {
     if (!auth) {
@@ -398,7 +446,9 @@ function DailyLedgerPage() {
     workspace?.member?.permissions?.canViewPayroll;
   const canUseDailyLedger = canRecordDailyLedger || canViewPayroll;
   const activeLedgerMode =
-    ledgerMode === "payroll" && canViewPayroll
+    ledgerMode === "expense" && canRecordDailyLedger
+      ? "expense"
+      : ledgerMode === "payroll" && canViewPayroll
       ? "payroll"
       : ledgerMode === "income" && canRecordDailyLedger
         ? "income"
@@ -596,6 +646,11 @@ function DailyLedgerPage() {
     [selectedStudentId, visibleStudents],
   );
 
+  const selectedStudentStatusMessage =
+    statusMessage && statusMessageStudentId === selectedStudent?.id
+      ? statusMessage
+      : "";
+
   const branchEmployees = useMemo(
     () =>
       employees.filter((employee) => employeeBelongsToBranch(employee, activeBranchId)),
@@ -764,6 +819,81 @@ function DailyLedgerPage() {
   }, [selectedEmployee?.id, workspace?.activeOrgId]);
 
   useEffect(() => {
+    let active = true;
+    let unsubscribe = () => {};
+
+    Promise.resolve().then(() => {
+      if (!active) {
+        return;
+      }
+
+      if (
+        authStatus !== "ready" ||
+        activeLedgerMode !== "expense" ||
+        !canRecordDailyLedger ||
+        !workspace?.activeOrgId ||
+        !selectedBranch?.id
+      ) {
+        setExpenseRecords([]);
+        setExpenseLoadStatus("idle");
+        setExpenseLoadError("");
+        return;
+      }
+
+      setExpenseRecords([]);
+      setExpenseLoadStatus("loading");
+      setExpenseLoadError("");
+
+      try {
+        unsubscribe = subscribeBranchExpenses({
+          branchId: selectedBranch.id,
+          onChange: (records) => {
+            if (!active) {
+              return;
+            }
+
+            setExpenseRecords(records);
+            setExpenseLoadStatus("ready");
+          },
+          onError: (error) => {
+            console.error("Unable to listen to branch expenses:", error);
+
+            if (!active) {
+              return;
+            }
+
+            setExpenseRecords([]);
+            setExpenseLoadStatus("error");
+            setExpenseLoadError("無法載入此分校的雜項支出。");
+          },
+          orgId: workspace.activeOrgId,
+        });
+      } catch (error) {
+        console.error("Unable to start branch expense listener:", error);
+
+        if (!active) {
+          return;
+        }
+
+        setExpenseRecords([]);
+        setExpenseLoadStatus("error");
+        setExpenseLoadError("無法啟動雜項支出同步。請確認 Firebase 設定。");
+      }
+    });
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [
+    activeLedgerMode,
+    authStatus,
+    canRecordDailyLedger,
+    selectedBranch?.id,
+    workspace?.activeOrgId,
+  ]);
+
+  useEffect(() => {
     if (!printInvoice && !printSalarySlip && !printPayment && !paymentTargetInvoice) {
       return undefined;
     }
@@ -867,6 +997,44 @@ function DailyLedgerPage() {
     [branchSalarySlips],
   );
 
+  const activeExpenseRecords = useMemo(
+    () => expenseRecords.filter((expense) => expense.status !== "void"),
+    [expenseRecords],
+  );
+  const branchExpenseTotal = useMemo(
+    () =>
+      activeExpenseRecords.reduce(
+        (total, expense) => total + getExpenseAmount(expense),
+        0,
+      ),
+    [activeExpenseRecords],
+  );
+  const currentMonthExpenseTotal = useMemo(() => {
+    const monthKey = todayDateValue().slice(0, 7);
+
+    return activeExpenseRecords
+      .filter((expense) => String(expense.expenseDate || "").startsWith(monthKey))
+      .reduce((total, expense) => total + getExpenseAmount(expense), 0);
+  }, [activeExpenseRecords]);
+  const expenseItemOptions = useMemo(() => {
+    const options = new Map();
+
+    activeExpenseRecords.forEach((expense) => {
+      const itemName = String(expense.itemName || "").trim();
+
+      if (itemName) {
+        options.set(itemName.normalize("NFKC").toLowerCase(), itemName);
+      }
+    });
+
+    return [...options.values()].sort((first, second) =>
+      first.localeCompare(second, undefined, {
+        numeric: true,
+        sensitivity: "base",
+      }),
+    );
+  }, [activeExpenseRecords]);
+
   const handleSignOut = async () => {
     if (!auth) {
       return;
@@ -951,6 +1119,7 @@ function DailyLedgerPage() {
         },
       });
 
+      setStatusMessageStudentId(selectedStudent.id);
       setStatusMessage(`已建立收據 ${saved.receiptNumber}。`);
       setPrintPayment(saved.payment);
       closePaymentModal();
@@ -977,6 +1146,7 @@ function DailyLedgerPage() {
     }
 
     setUpdatingInvoiceId(invoice.id);
+    setStatusMessageStudentId("");
     setStatusMessage("");
 
     try {
@@ -988,9 +1158,11 @@ function DailyLedgerPage() {
         total: invoice.total,
         updatedByUid: currentUser?.uid || "",
       });
+      setStatusMessageStudentId(selectedStudent.id);
       setStatusMessage(`已更新 ${invoice.invoiceNumber || "繳費通知單"} 狀態。`);
     } catch (error) {
       console.error("Unable to update invoice status:", error);
+      setStatusMessageStudentId(selectedStudent.id);
       setStatusMessage("狀態更新失敗。請確認 Firestore 權限後再試一次。");
     } finally {
       setUpdatingInvoiceId("");
@@ -1027,6 +1199,66 @@ function DailyLedgerPage() {
       setSalaryStatusMessage("狀態更新失敗。請確認 Firestore 權限後再試一次。");
     } finally {
       setUpdatingSalarySlipId("");
+    }
+  };
+
+  const handleExpenseSubmit = async (event) => {
+    event.preventDefault();
+
+    if (
+      !selectedBranch?.id ||
+      !workspace?.activeOrgId ||
+      expenseSaveStatus === "saving"
+    ) {
+      return;
+    }
+
+    const amount = Math.round(Number(expenseForm.amount) || 0);
+
+    if (!expenseForm.itemName.trim()) {
+      setExpenseSaveStatus("error");
+      setExpenseMessage("請輸入支出項目。");
+      return;
+    }
+
+    if (amount <= 0) {
+      setExpenseSaveStatus("error");
+      setExpenseMessage("支出金額必須大於 0。");
+      return;
+    }
+
+    setExpenseSaveStatus("saving");
+    setExpenseMessage("");
+
+    try {
+      const saved = await createBranchExpense({
+        amount,
+        branch: selectedBranch,
+        createdBy: {
+          displayName: getCurrentUserDisplayName(workspace, currentUser),
+          email: currentUser?.email || "",
+          uid: currentUser?.uid || "",
+        },
+        expenseDate: expenseForm.expenseDate,
+        itemName: expenseForm.itemName,
+        orgId: workspace.activeOrgId,
+      });
+
+      setExpenseSaveStatus("success");
+      setExpenseMessage(
+        `已記錄 ${saved.itemName} ${formatCurrency(saved.amount)}。`,
+      );
+      setExpenseForm((current) => ({
+        ...current,
+        amount: "",
+        itemName: "",
+      }));
+    } catch (error) {
+      console.error("Unable to create branch expense:", error);
+      setExpenseSaveStatus("error");
+      setExpenseMessage(
+        error.message || "雜項支出儲存失敗。請確認 Firestore 權限後再試一次。",
+      );
     }
   };
 
@@ -1352,13 +1584,19 @@ function DailyLedgerPage() {
         <div className="import-hero ledger-hero">
           <div>
             <p className="dashboard-kicker">
-              {activeLedgerMode === "income" ? "收入" : "應付款"}
+              {activeLedgerMode === "income"
+                ? "收入"
+                : activeLedgerMode === "payroll"
+                  ? "應付款"
+                  : "支出"}
             </p>
             <h1 id="ledger-title">每日收支</h1>
             <p>
               {activeLedgerMode === "income"
                 ? "依分校、班級與學生處理繳費通知單；同一位學生的跨分校通知單會集中在 profile。"
-                : "依分校與老師處理薪資單；發放完成後可在這裡更新狀態並列印。"}
+                : activeLedgerMode === "payroll"
+                  ? "依分校與老師處理薪資單；發放完成後可在這裡更新狀態並列印。"
+                  : "記錄分校日常雜項支出；曾輸入的支出項目會留給下次快速選用。"}
             </p>
           </div>
           <span>{workspace.organization.name}</span>
@@ -1385,6 +1623,16 @@ function DailyLedgerPage() {
               老師薪資
             </button>
           ) : null}
+          {canRecordDailyLedger ? (
+            <button
+              aria-pressed={activeLedgerMode === "expense"}
+              className={activeLedgerMode === "expense" ? "active" : ""}
+              onClick={() => setLedgerMode("expense")}
+              type="button"
+            >
+              雜項支出
+            </button>
+          ) : null}
         </div>
 
         <section className="branch-workspace-panel" aria-labelledby="ledger-branch-title">
@@ -1396,7 +1644,9 @@ function DailyLedgerPage() {
             <p>
               {activeLedgerMode === "income"
                 ? "先切換分校，再依班級找到學生。"
-                : "先切換分校，再找到老師薪資單。"}
+                : activeLedgerMode === "payroll"
+                  ? "先切換分校，再找到老師薪資單。"
+                  : "先切換分校，再記錄該分校的雜項支出。"}
             </p>
           </div>
           <div className="branch-switch-row" aria-label="選擇分校">
@@ -1410,8 +1660,10 @@ function DailyLedgerPage() {
                   setActiveClassId(ALL_CLASSES);
                   setSelectedStudentId("");
                   setSelectedEmployeeId("");
+                  setStatusMessageStudentId("");
                   setStatusMessage("");
                   setSalaryStatusMessage("");
+                  setExpenseMessage("");
                 }}
                 type="button"
               >
@@ -1438,6 +1690,11 @@ function DailyLedgerPage() {
                 onClick={() => {
                   setActiveClassId(ALL_CLASSES);
                   setSelectedStudentId("");
+                  setStatusMessageStudentId("");
+                  setStatusMessage("");
+                  setPrintInvoice(null);
+                  setPrintPayment(null);
+                  setPaymentTargetInvoice(null);
                 }}
                 type="button"
               >
@@ -1454,6 +1711,11 @@ function DailyLedgerPage() {
                   onClick={() => {
                     setActiveClassId(classRecord.classId);
                     setSelectedStudentId("");
+                    setStatusMessageStudentId("");
+                    setStatusMessage("");
+                    setPrintInvoice(null);
+                    setPrintPayment(null);
+                    setPaymentTargetInvoice(null);
                   }}
                   type="button"
                 >
@@ -1510,7 +1772,14 @@ function DailyLedgerPage() {
                         aria-pressed={active}
                         className={`ledger-student-card ${active ? "active" : ""}`}
                         key={student.id}
-                        onClick={() => setSelectedStudentId(student.id)}
+                        onClick={() => {
+                          setStatusMessageStudentId("");
+                          setStatusMessage("");
+                          setPrintInvoice(null);
+                          setPrintPayment(null);
+                          setPaymentTargetInvoice(null);
+                          setSelectedStudentId(student.id);
+                        }}
                         type="button"
                       >
                         <span>{getPrimaryLegacyNumber(student)}</span>
@@ -1655,13 +1924,15 @@ function DailyLedgerPage() {
                       ))}
                     </div>
 
-                    {statusMessage ? (
+                    {selectedStudentStatusMessage ? (
                       <p
                         className={`ledger-state-note ${
-                          statusMessage.includes("失敗") ? "error" : "success"
+                          selectedStudentStatusMessage.includes("失敗")
+                            ? "error"
+                            : "success"
                         }`}
                       >
-                        {statusMessage}
+                        {selectedStudentStatusMessage}
                       </p>
                     ) : null}
 
@@ -2032,6 +2303,172 @@ function DailyLedgerPage() {
                   <p>到老師薪資建立老師與薪資單後，這裡會顯示發放狀態。</p>
                 </div>
               )}
+            </section>
+          </section>
+        ) : null}
+
+        {selectedBranch && activeLedgerMode === "expense" ? (
+          <section className="expense-workspace-grid" aria-label="雜項支出工作台">
+            <section className="ledger-profile-panel expense-entry-panel">
+              <div className="ledger-profile-heading">
+                <div>
+                  <p className="dashboard-kicker">雜項支出</p>
+                  <h2>新增支出</h2>
+                </div>
+                <em className="ledger-student-id-badge">{selectedBranch.name}</em>
+              </div>
+
+              <form className="expense-form" onSubmit={handleExpenseSubmit}>
+                <label className="expense-form-full">
+                  支出項目
+                  <input
+                    list="expense-item-options"
+                    onChange={(event) =>
+                      setExpenseForm((current) => ({
+                        ...current,
+                        itemName: event.target.value,
+                      }))
+                    }
+                    placeholder="例如：教材採購"
+                    value={expenseForm.itemName}
+                  />
+                  <datalist id="expense-item-options">
+                    {expenseItemOptions.map((itemName) => (
+                      <option key={itemName} value={itemName} />
+                    ))}
+                  </datalist>
+                </label>
+
+                <label>
+                  金額
+                  <input
+                    min="1"
+                    onChange={(event) =>
+                      setExpenseForm((current) => ({
+                        ...current,
+                        amount: event.target.value,
+                      }))
+                    }
+                    placeholder="例如：1200"
+                    type="number"
+                    value={expenseForm.amount}
+                  />
+                </label>
+
+                <label>
+                  日期
+                  <input
+                    onChange={(event) =>
+                      setExpenseForm((current) => ({
+                        ...current,
+                        expenseDate: event.target.value,
+                      }))
+                    }
+                    type="date"
+                    value={expenseForm.expenseDate}
+                  />
+                </label>
+
+                <div className="expense-recorder-card expense-form-full">
+                  <span>紀錄人</span>
+                  <strong>{getCurrentUserDisplayName(workspace, currentUser)}</strong>
+                </div>
+
+                {expenseMessage ? (
+                  <p
+                    className={`ledger-state-note expense-form-full ${
+                      expenseSaveStatus === "error" ? "error" : "success"
+                    }`}
+                  >
+                    {expenseMessage}
+                  </p>
+                ) : null}
+
+                <div className="invoice-modal-actions expense-form-full">
+                  <button disabled={expenseSaveStatus === "saving"} type="submit">
+                    {expenseSaveStatus === "saving" ? "儲存中..." : "新增雜項支出"}
+                  </button>
+                </div>
+              </form>
+            </section>
+
+            <section className="ledger-profile-panel expense-history-panel">
+              <div className="ledger-profile-heading">
+                <div>
+                  <p className="dashboard-kicker">支出紀錄</p>
+                  <h2>{selectedBranch.name}</h2>
+                </div>
+                <em className="ledger-student-id-badge">
+                  {activeExpenseRecords.length} 筆
+                </em>
+              </div>
+
+              <div className="ledger-summary-grid" aria-label="雜項支出摘要">
+                <article>
+                  <span>本月支出</span>
+                  <strong>{formatCurrency(currentMonthExpenseTotal)}</strong>
+                </article>
+                <article>
+                  <span>全部支出</span>
+                  <strong>{formatCurrency(branchExpenseTotal)}</strong>
+                </article>
+                <article>
+                  <span>常用項目</span>
+                  <strong>{expenseItemOptions.length}</strong>
+                </article>
+              </div>
+
+              {expenseLoadStatus === "loading" ? (
+                <p className="ledger-state-note">正在載入雜項支出...</p>
+              ) : null}
+
+              {expenseLoadStatus === "error" ? (
+                <p className="ledger-state-note error">{expenseLoadError}</p>
+              ) : null}
+
+              {expenseLoadStatus === "ready" && !activeExpenseRecords.length ? (
+                <p className="ledger-state-note">
+                  此分校目前還沒有雜項支出紀錄。
+                </p>
+              ) : null}
+
+              <div className="ledger-invoice-list">
+                {activeExpenseRecords.map((expense) => (
+                  <article className="ledger-invoice-card expense-card" key={expense.id}>
+                    <div className="ledger-invoice-heading">
+                      <div>
+                        <strong>{expense.itemName || "未命名支出"}</strong>
+                        <p>
+                          {formatDateOnly(expense.expenseDate)} ·{" "}
+                          {expense.branchSnapshot?.name || selectedBranch.name}
+                        </p>
+                      </div>
+                      <em className="invoice-status-chip overdue">
+                        {formatCurrency(expense.amount)}
+                      </em>
+                    </div>
+
+                    <div className="ledger-invoice-amount-grid">
+                      <span>
+                        金額
+                        <strong>{formatCurrency(expense.amount)}</strong>
+                      </span>
+                      <span>
+                        日期
+                        <strong>{formatDateOnly(expense.expenseDate)}</strong>
+                      </span>
+                      <span>
+                        紀錄人
+                        <strong>{expense.createdByName || "未記錄"}</strong>
+                      </span>
+                    </div>
+
+                    <div className="ledger-invoice-lines">
+                      <span>建立時間：{formatDateTime(expense.createdAtIso)}</span>
+                    </div>
+                  </article>
+                ))}
+              </div>
             </section>
           </section>
         ) : null}

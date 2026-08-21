@@ -12,6 +12,7 @@ import "./App.css";
 
 const StudentsCoursesPage = lazy(() => import("./pages/StudentsCoursesPage"));
 const DailyLedgerPage = lazy(() => import("./pages/DailyLedgerPage"));
+const FinancialSummaryPage = lazy(() => import("./pages/FinancialSummaryPage"));
 const TeacherPayrollPage = lazy(() => import("./pages/TeacherPayrollPage"));
 const TeamAccessPage = lazy(() => import("./pages/TeamAccessPage"));
 const ProfileSetupPage = lazy(() => import("./pages/ProfileSetupPage"));
@@ -365,6 +366,25 @@ function App() {
             }
           >
             <DailyLedgerPage />
+          </Suspense>
+        }
+      />
+      <Route
+        path="/financial-summary"
+        element={
+          <Suspense
+            fallback={
+              <main className="dashboard-page">
+                <div className="dashboard-loading">
+                  <span className="brand-mark dark" aria-hidden="true">
+                    AP
+                  </span>
+                  <p>正在載入收支總覽...</p>
+                </div>
+              </main>
+            }
+          >
+            <FinancialSummaryPage />
           </Suspense>
         }
       />

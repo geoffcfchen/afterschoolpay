@@ -13,21 +13,28 @@ const modules = [
   {
     id: "daily-ledger",
     title: "每日收支",
-    description: "記錄家長付款、退款、教材費、雜支與各分校現金流。",
+    description: "處理學生收款、收據列印、老師薪資發放與雜項支出。",
     permission: "canRecordDailyLedger",
     path: "/daily-ledger",
   },
   {
+    id: "financial-summary",
+    title: "收支總覽",
+    description: "查看每月收入、支出與盈餘，並依分校篩選帳務結果。",
+    permissions: ["canRecordDailyLedger", "canViewPayroll"],
+    path: "/financial-summary",
+  },
+  {
     id: "teacher-payroll",
     title: "老師薪資",
-    description: "依分校、期間、課程與發放狀態查看老師薪資紀錄。",
+    description: "管理分校老師、月薪與 8 堂課薪資，並產生老師薪資單。",
     permission: "canViewPayroll",
     path: "/teacher-payroll",
   },
   {
     id: "students-programs",
     title: "學生與課程",
-    description: "管理家長、學生、科目、報名紀錄與班級名單。",
+    description: "管理分校班級、學生科目、課程日期與雜項費用，並產生繳費通知單。",
     permission: "canViewStudents",
     path: "/students-courses",
   },
@@ -37,6 +44,27 @@ const modules = [
     description: "邀請員工並設定每個人的權限等級與可查看分校。",
     permission: "canManageMembers",
     path: "/team-access",
+  },
+];
+
+const moduleSections = [
+  {
+    id: "ledger",
+    title: "帳務處理",
+    description: "處理每日收款、支出紀錄與每月盈餘總覽。",
+    moduleIds: ["daily-ledger", "financial-summary"],
+  },
+  {
+    id: "documents",
+    title: "資料與單據建立",
+    description: "建立學生通知單與老師薪資單，讓每日收支接續處理。",
+    moduleIds: ["students-programs", "teacher-payroll"],
+  },
+  {
+    id: "settings",
+    title: "系統設定",
+    description: "管理組織成員、權限等級與可查看分校。",
+    moduleIds: ["team-access"],
   },
 ];
 
@@ -93,6 +121,23 @@ function getWorkspaceErrorMessage(error) {
   }
 
   return "帳號已登入，但目前無法載入工作區。請確認 Firestore rules 與專案設定。";
+}
+
+function canUseModule(module, member) {
+  if (member.roleLevel === 1) {
+    return true;
+  }
+
+  const permissions = member.permissions || {};
+  const requiredPermissions = module.permissions || [module.permission];
+
+  return requiredPermissions.every((permission) => permissions[permission]);
+}
+
+function getModulesBySection(section) {
+  return section.moduleIds
+    .map((moduleId) => modules.find((module) => module.id === moduleId))
+    .filter(Boolean);
 }
 
 function DashboardPage() {
@@ -213,12 +258,9 @@ function DashboardPage() {
   }
 
   const member = workspace.member;
-  const permissions = member.permissions || {};
   const activeMember = member.status === "active";
   const branchCount = workspace.visibleBranches.length;
-  const enabledModules = modules.filter(
-    (module) => permissions[module.permission],
-  );
+  const enabledModules = modules.filter((module) => canUseModule(module, member));
 
   return (
     <main className="dashboard-page">
@@ -265,7 +307,7 @@ function DashboardPage() {
               歡迎，{getDisplayName(workspace.profile, currentUser)}
             </h1>
             <p className="dashboard-subtitle">
-              這是第一版登入後的管理後台，先整理分校、每日收支、老師薪資與團隊權限。
+              這是第一版登入後的管理後台，先整理分校、帳務處理、單據建立與團隊權限。
             </p>
           </div>
           <span
@@ -322,29 +364,46 @@ function DashboardPage() {
             <section className="module-panel" aria-labelledby="modules-title">
               <div className="panel-heading">
                 <p className="dashboard-kicker">工作區</p>
-                <h2 id="modules-title">依權限開放的功能</h2>
+                <h2 id="modules-title">依工作流程分組</h2>
               </div>
-              <div className="module-grid">
-                {modules.map((module) => {
-                  const enabled = permissions[module.permission];
-
-                  return (
-                    <article
-                      className={`module-card ${enabled ? "enabled" : "locked"}`}
-                      key={module.id}
-                    >
+              <div className="module-section-list">
+                {moduleSections.map((section) => (
+                  <section
+                    className={`module-section module-section-${section.id}`}
+                    key={section.id}
+                  >
+                    <div className="module-section-heading">
                       <div>
-                        <h3>{module.title}</h3>
-                        <p>{module.description}</p>
+                        <h3>{section.title}</h3>
+                        <p>{section.description}</p>
                       </div>
-                      {enabled && module.path ? (
-                        <Link to={module.path}>開啟</Link>
-                      ) : (
-                        <span>{enabled ? "可使用" : "未開放"}</span>
-                      )}
-                    </article>
-                  );
-                })}
+                    </div>
+                    <div className="module-grid">
+                      {getModulesBySection(section).map((module) => {
+                        const enabled = canUseModule(module, member);
+
+                        return (
+                          <article
+                            className={`module-card ${
+                              enabled ? "enabled" : "locked"
+                            }`}
+                            key={module.id}
+                          >
+                            <div>
+                              <h3>{module.title}</h3>
+                              <p>{module.description}</p>
+                            </div>
+                            {enabled && module.path ? (
+                              <Link to={module.path}>開啟</Link>
+                            ) : (
+                              <span>{enabled ? "可使用" : "未開放"}</span>
+                            )}
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </section>
+                ))}
               </div>
             </section>
           </div>

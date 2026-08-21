@@ -526,11 +526,13 @@ export async function updateTeacherSalarySlipStatus({
 
   const db = requireFirestore();
   const normalizedTotal = parseAmount(total);
+  const statusChangedAtIso = new Date().toISOString();
   const paymentFields =
     status === "paid"
       ? {
           balance: 0,
           paidAt: serverTimestamp(),
+          paidAtIso: statusChangedAtIso,
           paidTotal: normalizedTotal,
         }
       : status === "void"
@@ -538,12 +540,15 @@ export async function updateTeacherSalarySlipStatus({
             balance: 0,
             paidTotal: 0,
             voidedAt: serverTimestamp(),
+            voidedAtIso: statusChangedAtIso,
           }
         : {
             balance: normalizedTotal,
             paidAt: null,
+            paidAtIso: null,
             paidTotal: 0,
             voidedAt: null,
+            voidedAtIso: null,
           };
 
   await setDoc(

@@ -4,6 +4,38 @@
   color: var(--ink);
 }
 
+.site-shell,
+.dashboard-page,
+.auth-page,
+.site-header,
+.brand,
+.dashboard-brand,
+.dashboard-user-row,
+.dashboard-shell,
+.team-shell,
+.import-shell,
+.ledger-shell,
+.payroll-shell,
+.financial-shell,
+.org-setup-shell,
+.branch-panel,
+.module-panel,
+.team-list-panel,
+.team-editor-panel,
+.manual-setup-panel,
+.compact-import-panel,
+.branch-workspace-panel,
+.invoice-sheet-panel,
+.fee-options-manager,
+.ledger-student-panel,
+.ledger-profile-panel,
+.payroll-builder-panel,
+.salary-class-card,
+.financial-summary-card,
+.financial-detail-card {
+  min-width: 0;
+}
+
 .hero-section {
   position: relative;
   min-height: 88svh;
@@ -3114,7 +3146,7 @@
 .invoice-preview-modal {
   width: min(760px, 100%);
   max-height: calc(100svh - 48px);
-  overflow-y: auto;
+  overflow: auto;
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 8px;
   background: #ffffff;
@@ -4814,6 +4846,7 @@
 
   .site-header {
     align-items: flex-start;
+    gap: 12px;
   }
 
   .site-header-actions {
@@ -4821,7 +4854,9 @@
   }
 
   .user-chip {
-    max-width: 46vw;
+    max-width: min(100%, 58vw);
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
 
   .nav-links {
@@ -4881,6 +4916,7 @@
 
   .dashboard-user-row {
     width: 100%;
+    justify-content: flex-start;
   }
 
   .dashboard-email {
@@ -4936,6 +4972,29 @@
     justify-content: flex-start;
   }
 
+  .class-tab-row,
+  .branch-switch-row,
+  .ledger-mode-toggle,
+  .payroll-mode-toggle {
+    max-width: 100%;
+    overflow-x: auto;
+    padding-bottom: 8px;
+    scrollbar-gutter: stable;
+  }
+
+  .class-tab-row,
+  .ledger-mode-toggle,
+  .payroll-mode-toggle {
+    flex-wrap: nowrap;
+  }
+
+  .class-tab-row button,
+  .branch-switch-row button,
+  .ledger-mode-toggle button,
+  .payroll-mode-toggle button {
+    flex: 0 0 auto;
+  }
+
   .course-date-grid,
   .invoice-meta-grid,
   .ledger-summary-grid,
@@ -4980,6 +5039,24 @@
     flex-direction: column;
   }
 
+  .invoice-modal-backdrop {
+    align-items: start;
+    padding: 16px;
+  }
+
+  .invoice-preview-modal,
+  .attendance-roster-modal,
+  .class-create-modal,
+  .branch-create-modal,
+  .student-create-modal,
+  .delete-student-modal,
+  .course-date-modal,
+  .fee-manager-modal {
+    width: 100%;
+    max-height: calc(100svh - 32px);
+    padding: 16px;
+  }
+
   .table-panel-heading {
     flex-direction: column;
     align-items: stretch;
@@ -5017,11 +5094,53 @@
   .invoice-modal-actions button {
     flex: 1 1 120px;
   }
+
+  .student-invoice-history-heading,
+  .student-invoice-history-item {
+    display: grid;
+    gap: 10px;
+  }
+
+  .student-invoice-history-item > div:last-child {
+    justify-items: start;
+  }
 }
 
 @media (max-width: 520px) {
+  .site-header,
+  .org-setup-bar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .site-header-actions,
+  .user-chip {
+    width: 100%;
+    max-width: 100%;
+    justify-content: flex-start;
+  }
+
   .hero-content h1 {
     font-size: 48px;
+  }
+
+  .hero-section,
+  .section,
+  .workflow-band,
+  .early-access-section {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .dashboard-topbar {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .auth-terms-row {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
   }
 
   .workflow-list li {
@@ -5042,7 +5161,16 @@
   }
 
   .dashboard-shell {
-    width: min(100% - 24px, 1180px);
+    width: min(1180px, calc(100% - 24px));
+  }
+
+  .team-shell,
+  .import-shell,
+  .ledger-shell,
+  .payroll-shell,
+  .financial-shell,
+  .org-setup-shell {
+    width: min(1320px, calc(100% - 24px));
   }
 
   .summary-tile strong {
@@ -5052,12 +5180,23 @@
   .branch-panel,
   .module-panel,
   .access-panel,
-  .import-panel {
+  .import-panel,
+  .team-list-panel,
+  .team-editor-panel,
+  .manual-setup-panel,
+  .compact-import-panel,
+  .branch-workspace-panel,
+  .invoice-sheet-panel,
+  .fee-options-manager,
+  .ledger-student-panel,
+  .ledger-profile-panel,
+  .financial-summary-card,
+  .org-option-panel {
     padding: 16px;
   }
 
   .import-shell {
-    width: min(100% - 24px, 1180px);
+    width: min(1180px, calc(100% - 24px));
   }
 
   .workspace-summary-grid {
@@ -5073,6 +5212,15 @@
     justify-items: start;
   }
 
+  .module-section-heading,
+  .ledger-payment-history-heading,
+  .ledger-payment-card,
+  .payment-modal-summary {
+    display: grid;
+    gap: 10px;
+    justify-items: start;
+  }
+
   .upload-dropzone h2 {
     font-size: 24px;
   }
@@ -5081,5 +5229,26 @@
   .fee-application-list article,
   .fee-preview-list article {
     grid-template-columns: 1fr;
+  }
+
+  .financial-detail-card {
+    grid-template-columns: 1fr;
+  }
+
+  .financial-amount {
+    justify-self: start;
+  }
+
+  .date-input-row,
+  .delete-warning-body {
+    grid-template-columns: 1fr;
+  }
+
+  .invoice-print-area {
+    padding: 14px;
+  }
+
+  .invoice-print-area header {
+    display: grid;
   }
 }

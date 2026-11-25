@@ -22,6 +22,7 @@ import {
   subscribeStudentPayments,
   updateStudentInvoiceStatus,
 } from "../lib/studentInvoiceData";
+import { mergeDuplicateStudentAccounts } from "../lib/studentMergeData";
 import {
   SALARY_SLIP_STATUS_LABELS,
   getPayrollTypeLabel,
@@ -116,6 +117,17 @@ function formatDateOnly(value) {
 
 function getShortStudentId(studentId = "") {
   return studentId.replace(/^student-/, "").slice(0, 8) || "未設定";
+}
+
+function getStudentDuplicateKey(student) {
+  return (
+    student?.normalizedName ||
+    String(student?.name || "")
+      .normalize("NFKC")
+      .trim()
+      .replace(/\s+/g, "")
+      .toLowerCase()
+  );
 }
 
 function getPrimaryLegacyNumber(student) {
@@ -375,6 +387,11 @@ function DailyLedgerPage() {
   });
   const [expenseSaveStatus, setExpenseSaveStatus] = useState("idle");
   const [expenseMessage, setExpenseMessage] = useState("");
+  const [studentMergeModalOpen, setStudentMergeModalOpen] = useState(false);
+  const [mergeGroupKey, setMergeGroupKey] = useState("");
+  const [mergeCanonicalId, setMergeCanonicalId] = useState("");
+  const [mergeSaveStatus, setMergeSaveStatus] = useState("idle");
+  const [mergeError, setMergeError] = useState("");
 
   useEffect(() => {
     if (!auth) {
@@ -463,6 +480,7 @@ function DailyLedgerPage() {
   const canViewAllBranches =
     workspace?.member?.roleLevel === 1 ||
     workspace?.member?.permissions?.canViewAllBranches;
+  const canMergeStudentAccounts = workspace?.member?.roleLevel === 1;
   const allowedBranchKey = branchOptions.map((branch) => branch.id).join("|");
 
   useEffect(() => {
@@ -637,6 +655,41 @@ function DailyLedgerPage() {
       ),
     [activeBranchId, activeClassId, branchStudents],
   );
+
+  const duplicateStudentGroups = useMemo(() => {
+    const groups = new Map();
+
+    branchStudents.forEach((student) => {
+      const key = getStudentDuplicateKey(student);
+
+      if (!key) {
+        return;
+      }
+
+      const records = groups.get(key) || [];
+      records.push(student);
+      groups.set(key, records);
+    });
+
+    return [...groups.entries()]
+      .map(([key, records]) => ({
+        key,
+        name: records[0]?.name || "未命名學生",
+        students: sortStudentsByLegacyNumber(records),
+      }))
+      .filter((group) => group.students.length > 1)
+      .sort((first, second) =>
+        first.name.localeCompare(second.name, undefined, {
+          numeric: true,
+          sensitivity: "base",
+        }),
+      );
+  }, [branchStudents]);
+
+  const selectedDuplicateGroup =
+    duplicateStudentGroups.find((group) => group.key === mergeGroupKey) ||
+    duplicateStudentGroups[0] ||
+    null;
 
   const selectedStudent = useMemo(
     () =>
@@ -894,7 +947,13 @@ function DailyLedgerPage() {
   ]);
 
   useEffect(() => {
-    if (!printInvoice && !printSalarySlip && !printPayment && !paymentTargetInvoice) {
+    if (
+      !printInvoice &&
+      !printSalarySlip &&
+      !printPayment &&
+      !paymentTargetInvoice &&
+      !studentMergeModalOpen
+    ) {
       return undefined;
     }
 
@@ -905,6 +964,7 @@ function DailyLedgerPage() {
         setPrintSalarySlip(null);
         setPrintPayment(null);
         setPaymentTargetInvoice(null);
+        setStudentMergeModalOpen(false);
       }
     };
 
@@ -915,7 +975,13 @@ function DailyLedgerPage() {
       document.body.style.overflow = originalOverflow;
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [paymentTargetInvoice, printInvoice, printPayment, printSalarySlip]);
+  }, [
+    paymentTargetInvoice,
+    printInvoice,
+    printPayment,
+    printSalarySlip,
+    studentMergeModalOpen,
+  ]);
 
   const invoiceCounts = useMemo(
     () =>
@@ -1034,6 +1100,78 @@ function DailyLedgerPage() {
       }),
     );
   }, [activeExpenseRecords]);
+
+  const openStudentMergeModal = () => {
+    const firstGroup = duplicateStudentGroups[0];
+
+    if (!firstGroup) {
+      return;
+    }
+
+    setMergeGroupKey(firstGroup.key);
+    setMergeCanonicalId(firstGroup.students[0]?.id || "");
+    setMergeSaveStatus("idle");
+    setMergeError("");
+    setStudentMergeModalOpen(true);
+  };
+
+  const handleMergeGroupChange = (event) => {
+    const nextGroupKey = event.target.value;
+    const nextGroup = duplicateStudentGroups.find(
+      (group) => group.key === nextGroupKey,
+    );
+
+    setMergeGroupKey(nextGroupKey);
+    setMergeCanonicalId(nextGroup?.students[0]?.id || "");
+    setMergeError("");
+  };
+
+  const handleMergeDuplicateStudents = async () => {
+    if (
+      !selectedDuplicateGroup ||
+      !mergeCanonicalId ||
+      !workspace?.activeOrgId ||
+      mergeSaveStatus === "saving"
+    ) {
+      return;
+    }
+
+    const duplicateStudentIds = selectedDuplicateGroup.students
+      .map((student) => student.id)
+      .filter((studentId) => studentId && studentId !== mergeCanonicalId);
+
+    if (!duplicateStudentIds.length) {
+      setMergeError("請選擇要保留的學生 ID。");
+      return;
+    }
+
+    setMergeSaveStatus("saving");
+    setMergeError("");
+
+    try {
+      const result = await mergeDuplicateStudentAccounts({
+        canonicalStudentId: mergeCanonicalId,
+        duplicateStudentIds,
+        mergedByEmail: currentUser?.email || "",
+        mergedByUid: currentUser?.uid || "",
+        orgId: workspace.activeOrgId,
+      });
+
+      setSelectedStudentId(result.canonicalStudentId);
+      setStatusMessageStudentId(result.canonicalStudentId);
+      setStatusMessage(
+        `已合併 ${result.mergedCount} 個重複學生帳戶。單據與班級資料已移到保留的 ID。`,
+      );
+      setStudentMergeModalOpen(false);
+      setMergeSaveStatus("idle");
+    } catch (error) {
+      console.error("Unable to merge duplicate students:", error);
+      setMergeError(
+        error.message || "合併學生失敗。請確認權限與網路後再試一次。",
+      );
+      setMergeSaveStatus("error");
+    }
+  };
 
   const handleSignOut = async () => {
     if (!auth) {
@@ -1757,6 +1895,24 @@ function DailyLedgerPage() {
                   <p className="ledger-state-note">
                     目前沒有符合此分校與班級的學生。
                   </p>
+                ) : null}
+
+                {canMergeStudentAccounts && duplicateStudentGroups.length ? (
+                  <section
+                    aria-label="疑似重複學生"
+                    className="duplicate-student-panel"
+                  >
+                    <div>
+                      <strong>疑似重複學生</strong>
+                      <p>
+                        {duplicateStudentGroups.length} 組同名不同 ID，可合併單據與
+                        班級資料。
+                      </p>
+                    </div>
+                    <button onClick={openStudentMergeModal} type="button">
+                      清理
+                    </button>
+                  </section>
                 ) : null}
 
                 <div className="ledger-student-list">
@@ -2672,6 +2828,123 @@ function DailyLedgerPage() {
               <button
                 className="secondary-modal-button"
                 onClick={() => setPrintPayment(null)}
+                type="button"
+              >
+                取消
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {studentMergeModalOpen ? (
+        <div
+          className="invoice-modal-backdrop"
+          onClick={() => setStudentMergeModalOpen(false)}
+        >
+          <section
+            aria-labelledby="student-merge-title"
+            aria-modal="true"
+            className="student-merge-modal"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+          >
+            <div className="invoice-modal-heading warning-modal-heading">
+              <div>
+                <p className="dashboard-kicker">資料清理</p>
+                <h2 id="student-merge-title">合併重複學生</h2>
+                <p>
+                  保留一個 studentId，其他重複 ID 的通知單、收據與付款紀錄會搬到
+                  保留的學生帳戶。
+                </p>
+              </div>
+              <button
+                className="modal-close-icon"
+                onClick={() => setStudentMergeModalOpen(false)}
+                type="button"
+              >
+                關閉
+              </button>
+            </div>
+
+            <div className="student-merge-body">
+              <label>
+                選擇同名群組
+                <select onChange={handleMergeGroupChange} value={mergeGroupKey}>
+                  {duplicateStudentGroups.map((group) => (
+                    <option key={group.key} value={group.key}>
+                      {group.name}（{group.students.length} 個 ID）
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {selectedDuplicateGroup ? (
+                <div className="student-merge-choice-list">
+                  {selectedDuplicateGroup.students.map((student) => {
+                    const classBadges = getStudentClassBadges(
+                      student,
+                      activeBranchId,
+                    );
+                    const selected = mergeCanonicalId === student.id;
+
+                    return (
+                      <label
+                        className={selected ? "selected" : ""}
+                        key={student.id}
+                      >
+                        <input
+                          checked={selected}
+                          name="canonical-student-id"
+                          onChange={() => setMergeCanonicalId(student.id)}
+                          type="radio"
+                        />
+                        <span>
+                          <strong>{student.name || "未命名學生"}</strong>
+                          <em>ID {getShortStudentId(student.id)}</em>
+                          <small>
+                            編號：{getPrimaryLegacyNumber(student) || "未設定"} ·{" "}
+                            {classBadges
+                              .map((record) => record.className)
+                              .join("、") || "未分類"}
+                          </small>
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              ) : null}
+
+              <div className="delete-warning-body student-merge-warning">
+                <span aria-hidden="true" className="delete-warning-icon">
+                  !
+                </span>
+                <div className="delete-warning-copy">
+                  <strong>請確認哪個 ID 要保留</strong>
+                  <span>這個動作會刪除其他重複 studentId。</span>
+                  <p>
+                    系統會先搬移通知單與收據，再更新學生與課程裡的班級表格。
+                    真的同名但不同人的學生不要合併。
+                  </p>
+                </div>
+              </div>
+
+              {mergeError ? <p className="ledger-state-note error">{mergeError}</p> : null}
+            </div>
+
+            <div className="modal-form-actions delete-modal-actions">
+              <button
+                className="danger-modal-button"
+                disabled={mergeSaveStatus === "saving"}
+                onClick={handleMergeDuplicateStudents}
+                type="button"
+              >
+                {mergeSaveStatus === "saving" ? "合併中..." : "合併其他 ID"}
+              </button>
+              <button
+                className="secondary-modal-button"
+                disabled={mergeSaveStatus === "saving"}
+                onClick={() => setStudentMergeModalOpen(false)}
                 type="button"
               >
                 取消

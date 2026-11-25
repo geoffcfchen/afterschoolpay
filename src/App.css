@@ -3825,6 +3825,47 @@
   scrollbar-gutter: stable;
 }
 
+.duplicate-student-panel {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0;
+  border: 1px solid #f0c7bf;
+  border-radius: 8px;
+  background: #fff8f6;
+  padding: 12px;
+}
+
+.duplicate-student-panel strong {
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.duplicate-student-panel p {
+  margin: 5px 0 0;
+  color: #62443f;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.duplicate-student-panel button {
+  min-height: 34px;
+  border: 1px solid #9d2c1e;
+  border-radius: 8px;
+  background: #9d2c1e;
+  color: #ffffff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.duplicate-student-panel button:hover {
+  border-color: #792014;
+  background: #792014;
+}
+
 .ledger-student-card {
   display: grid;
   grid-template-columns: 44px minmax(0, 1fr);
@@ -4155,6 +4196,98 @@
 
 .payment-modal {
   max-width: 760px;
+}
+
+.student-merge-modal {
+  width: min(720px, 100%);
+  max-height: calc(100svh - 48px);
+  overflow: auto;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 18px;
+  box-shadow: 0 24px 72px rgba(7, 18, 34, 0.28);
+}
+
+.student-merge-body {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.student-merge-body > label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.student-merge-body select {
+  min-height: 42px;
+  border: 1px solid #cfdedc;
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--ink);
+  padding: 0 10px;
+  font: inherit;
+  font-size: 14px;
+}
+
+.student-merge-choice-list {
+  display: grid;
+  gap: 8px;
+}
+
+.student-merge-choice-list label {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  border: 1px solid #e0ebea;
+  border-radius: 8px;
+  background: #f9fcfb;
+  color: var(--ink);
+  padding: 12px;
+  cursor: pointer;
+}
+
+.student-merge-choice-list label.selected {
+  border-color: var(--teal-dark);
+  background: #effbf8;
+  box-shadow: inset 4px 0 0 var(--teal);
+}
+
+.student-merge-choice-list input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--teal-dark);
+}
+
+.student-merge-choice-list span {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.student-merge-choice-list strong {
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.student-merge-choice-list em,
+.student-merge-choice-list small {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 850;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.student-merge-warning {
+  margin-top: 0;
 }
 
 .payment-modal-summary {
@@ -5046,6 +5179,7 @@
 
   .invoice-preview-modal,
   .attendance-roster-modal,
+  .student-merge-modal,
   .class-create-modal,
   .branch-create-modal,
   .student-create-modal,

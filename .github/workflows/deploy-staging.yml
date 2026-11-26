@@ -35,6 +35,7 @@ jobs:
           ref: ${{ inputs.ref || github.ref }}
 
       - name: Check staging secrets
+        id: staging-secrets
         env:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.STAGING_FIREBASE_SERVICE_ACCOUNT_JSON }}
           FIREBASE_PROJECT_ID: ${{ secrets.STAGING_FIREBASE_PROJECT_ID }}
@@ -47,21 +48,26 @@ jobs:
           missing=0
           for name in FIREBASE_SERVICE_ACCOUNT_JSON FIREBASE_PROJECT_ID VITE_FB_API_KEY VITE_FB_AUTH_DOMAIN VITE_FB_STORAGE_BUCKET VITE_FB_MESSAGING_SENDER_ID VITE_FB_APP_ID; do
             if [ -z "${!name}" ]; then
-              echo "::error::Missing required staging secret: $name"
+              echo "::warning::Missing staging secret: $name"
               missing=1
             fi
           done
           if [ "$missing" -ne 0 ]; then
-            exit 1
+            echo "::warning::Skipping staging deploy until staging Firebase secrets are configured."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Setup Node
+        if: steps.staging-secrets.outputs.ready == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
       - name: Create staging environment file
+        if: steps.staging-secrets.outputs.ready == 'true'
         run: |
           cat << 'EOF' > .env
           VITE_FB_API_KEY=${{ secrets.STAGING_VITE_FB_API_KEY }}
@@ -74,23 +80,29 @@ jobs:
           EOF
 
       - name: Install dependencies
+        if: steps.staging-secrets.outputs.ready == 'true'
         run: npm ci
 
       - name: Run lint
+        if: steps.staging-secrets.outputs.ready == 'true'
         run: npm run lint
 
       - name: Build project
+        if: steps.staging-secrets.outputs.ready == 'true'
         run: npm run build
 
       - name: Install Firebase CLI
+        if: steps.staging-secrets.outputs.ready == 'true'
         run: npm install --global firebase-tools
 
       - name: Write Firebase service account
+        if: steps.staging-secrets.outputs.ready == 'true'
         env:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.STAGING_FIREBASE_SERVICE_ACCOUNT_JSON }}
         run: printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/firebase-service-account.json"
 
       - name: Deploy Firebase Hosting and Firestore rules
+        if: steps.staging-secrets.outputs.ready == 'true'
         env:
           FIREBASE_PROJECT_ID: ${{ secrets.STAGING_FIREBASE_PROJECT_ID }}
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-service-account.json

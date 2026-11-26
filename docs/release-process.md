@@ -39,6 +39,7 @@ CI build 使用 placeholder Firebase env，確保一般程式錯誤不會被 sec
 - deploy Firestore rules
 
 staging 必須先在 GitHub 設好 `STAGING_*` secrets。
+如果 secrets 還沒設定，workflow 會顯示 warning 並跳過部署，方便先建立 staging branch 與 PR 流程。
 
 ## Production 部署
 

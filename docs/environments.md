@@ -66,7 +66,7 @@ STAGING_VITE_FB_APP_ID
 STAGING_VITE_FB_MEASUREMENT_ID
 ```
 
-staging workflow 會部署 Firebase Hosting 與 Firestore rules。如果缺少必要 secrets，workflow 會直接失敗，避免誤以為測試環境已上線。
+staging workflow 會部署 Firebase Hosting 與 Firestore rules。如果缺少必要 secrets，workflow 會顯示 warning 並跳過部署；補齊 secrets 後下一次 `staging` push 就會正式部署。
 
 ## 本機環境
 

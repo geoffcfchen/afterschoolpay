@@ -172,6 +172,7 @@ GitHub Actions workflow 位於：
 ```text
 docs/release-process.md
 docs/environments.md
+docs/cloud-functions.md
 ```
 
 ### CI

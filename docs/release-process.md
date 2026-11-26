@@ -25,6 +25,7 @@
 - `npm run lint`
 - `npm run build`
 - Firebase 設定檔存在與 rules path sanity check
+- Cloud Functions syntax check
 
 CI build 使用 placeholder Firebase env，確保一般程式錯誤不會被 secrets 擋住。
 
@@ -37,6 +38,7 @@ CI build 使用 placeholder Firebase env，確保一般程式錯誤不會被 sec
 - build
 - deploy Firebase Hosting
 - deploy Firestore rules
+- deploy Cloud Functions
 
 staging 必須先在 GitHub 設好 `STAGING_*` secrets。
 如果 secrets 還沒設定，workflow 會顯示 warning 並跳過部署，方便先建立 staging branch 與 PR 流程。
@@ -49,7 +51,7 @@ staging 必須先在 GitHub 設好 `STAGING_*` secrets。
 - lint
 - build
 - deploy GitHub Pages
-- 如果有 production Firebase service account secret，會同步 deploy Firestore rules
+- 如果有 production Firebase service account secret，會同步 deploy Firestore rules 與 Cloud Functions
 
 正式前端目前保留 GitHub Pages 與 `public/CNAME`，避免在導入 staging 時改動正式網址架構。
 
@@ -61,7 +63,7 @@ staging 必須先在 GitHub 設好 `STAGING_*` secrets。
 firebase deploy --only firestore:rules --project afterschoolpay
 ```
 
-長期建議使用 GitHub Actions secrets 讓 production workflow 自動發布 rules，避免程式碼和 Firebase console 的 rules 版本不同。
+長期建議使用 GitHub Actions secrets 讓 production workflow 自動發布 rules 與 Cloud Functions，避免程式碼和 Firebase console 的版本不同。
 
 ## Branch Protection
 

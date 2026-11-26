@@ -13,6 +13,8 @@ import {
   where,
   writeBatch,
 } from "firebase/firestore";
+import { httpsCallable } from "firebase/functions";
+import { cloudFunctions } from "./firebase";
 import { realtimeFirestore } from "./realtimeFirestore";
 import { DEFAULT_ORG_ID } from "./orgData";
 
@@ -40,6 +42,15 @@ const requireFirestore = () => {
 };
 
 const toPlainData = (value) => JSON.parse(JSON.stringify(value));
+const canFallbackToLocalPayment = (error) =>
+  [
+    "functions/not-found",
+    "functions/unavailable",
+    "functions/unimplemented",
+    "not-found",
+    "unavailable",
+    "unimplemented",
+  ].includes(error?.code);
 
 export function getInvoiceStatusLabel(status) {
   return INVOICE_STATUS_LABELS[status] || status || "未付款";
@@ -680,7 +691,7 @@ export async function updateStudentInvoiceStatus({
   );
 }
 
-export async function createStudentInvoicePayment({
+async function createStudentInvoicePaymentLocally({
   amount,
   invoice,
   method = "cash",
@@ -817,4 +828,57 @@ export async function createStudentInvoicePayment({
     paymentId: paymentRef.id,
     receiptNumber,
   };
+}
+
+export async function createStudentInvoicePayment({
+  amount,
+  invoice,
+  method = "cash",
+  note = "",
+  organization,
+  orgId = DEFAULT_ORG_ID,
+  receivedAtBranch,
+  receivedBy,
+  student,
+}) {
+  if (cloudFunctions) {
+    try {
+      const createPayment = httpsCallable(
+        cloudFunctions,
+        "createStudentInvoicePayment",
+      );
+      const result = await createPayment({
+        amount,
+        invoiceId: invoice?.id || "",
+        method,
+        note,
+        orgId,
+        receivedAtBranchId: receivedAtBranch?.id || "",
+        studentId: student?.id || "",
+      });
+
+      return result.data;
+    } catch (error) {
+      if (!canFallbackToLocalPayment(error)) {
+        throw error;
+      }
+
+      console.warn(
+        "Cloud Function createStudentInvoicePayment unavailable; using temporary local fallback.",
+        error,
+      );
+    }
+  }
+
+  return createStudentInvoicePaymentLocally({
+    amount,
+    invoice,
+    method,
+    note,
+    organization,
+    orgId,
+    receivedAtBranch,
+    receivedBy,
+    student,
+  });
 }

@@ -5,8 +5,8 @@ Afterschool Pay 目前採用三個層級來管理品質與上線風險：
 | 環境 | Git 分支 | 用途 | 部署目標 |
 | --- | --- | --- | --- |
 | 本機開發 | `codex/*` 或 feature branch | 開發與快速驗證 | `npm run dev` |
-| Staging | `staging` | 給內部測試、確認資料規則與 UI 流程 | Firebase Hosting + Firestore rules |
-| Production | `main` | 正式給補習班使用 | GitHub Pages + production Firestore rules |
+| Staging | `staging` | 給內部測試、確認資料規則與 UI 流程 | Firebase Hosting + Firestore rules + Cloud Functions |
+| Production | `main` | 正式給補習班使用 | GitHub Pages + production Firestore rules + Cloud Functions |
 
 ## Firebase 專案
 
@@ -42,14 +42,14 @@ VITE_FB_APP_ID
 VITE_FB_MEASUREMENT_ID
 ```
 
-若要讓 GitHub Actions 自動發布 production Firestore rules，再加入：
+若要讓 GitHub Actions 自動發布 production Firestore rules 與 Cloud Functions，再加入：
 
 ```text
 PRODUCTION_FIREBASE_PROJECT_ID
 PRODUCTION_FIREBASE_SERVICE_ACCOUNT_JSON
 ```
 
-`PRODUCTION_FIREBASE_PROJECT_ID` 可和 `VITE_FB_PROJECT_ID` 相同。service account 建議只給 Firebase Hosting / Firestore rules deploy 需要的最小權限。
+`PRODUCTION_FIREBASE_PROJECT_ID` 可和 `VITE_FB_PROJECT_ID` 相同。service account 建議只給 Firestore rules 與 Cloud Functions deploy 需要的最小權限。
 
 ## Staging Secrets
 
@@ -66,7 +66,7 @@ STAGING_VITE_FB_APP_ID
 STAGING_VITE_FB_MEASUREMENT_ID
 ```
 
-staging workflow 會部署 Firebase Hosting 與 Firestore rules。如果缺少必要 secrets，workflow 會顯示 warning 並跳過部署；補齊 secrets 後下一次 `staging` push 就會正式部署。
+staging workflow 會部署 Firebase Hosting、Firestore rules 與 Cloud Functions。如果缺少必要 secrets，workflow 會顯示 warning 並跳過部署；補齊 secrets 後下一次 `staging` push 就會正式部署。
 
 ## 本機環境
 

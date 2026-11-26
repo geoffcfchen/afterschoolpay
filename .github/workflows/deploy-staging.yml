@@ -101,10 +101,10 @@ jobs:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.STAGING_FIREBASE_SERVICE_ACCOUNT_JSON }}
         run: printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/firebase-service-account.json"
 
-      - name: Deploy Firebase Hosting and Firestore rules
+      - name: Deploy Firebase Hosting, Firestore rules, and Functions
         if: steps.staging-secrets.outputs.ready == 'true'
         env:
           FIREBASE_PROJECT_ID: ${{ secrets.STAGING_FIREBASE_PROJECT_ID }}
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-service-account.json
-        run: firebase deploy --only hosting,firestore:rules --project "$FIREBASE_PROJECT_ID" --non-interactive
+        run: firebase deploy --only hosting,firestore:rules,functions --project "$FIREBASE_PROJECT_ID" --non-interactive
 

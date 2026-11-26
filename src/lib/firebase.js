@@ -10,6 +10,7 @@ import {
   signInWithPopup,
 } from "firebase/auth";
 import { getFirestore } from "firebase/firestore/lite";
+import { getFunctions } from "firebase/functions";
 import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
@@ -59,6 +60,7 @@ if (app && typeof window !== "undefined") {
 }
 
 export const auth = app ? getAuth(app) : undefined;
+export const cloudFunctions = app ? getFunctions(app, "asia-east1") : undefined;
 export const firestore = app ? getFirestore(app) : undefined;
 export const storage = app ? getStorage(app) : undefined;
 export { analytics, app };

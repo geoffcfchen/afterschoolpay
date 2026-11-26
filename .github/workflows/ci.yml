@@ -88,6 +88,22 @@ jobs:
           test -s firestore.rules
           grep -q '"rules": "firestore.rules"' firebase.json
 
+  functions:
+    name: Functions Syntax
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Check Cloud Functions source
+        run: npm --prefix functions run lint
+
   ci:
     name: CI
     runs-on: ubuntu-latest
@@ -95,6 +111,7 @@ jobs:
       - lint
       - build
       - firebase-rules
+      - functions
     if: always()
 
     steps:
@@ -110,6 +127,10 @@ jobs:
           fi
           if [ "${{ needs.firebase-rules.result }}" != "success" ]; then
             echo "Firebase rules sanity failed"
+            exit 1
+          fi
+          if [ "${{ needs.functions.result }}" != "success" ]; then
+            echo "Functions syntax failed"
             exit 1
           fi
 

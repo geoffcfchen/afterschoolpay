@@ -134,5 +134,5 @@ jobs:
         env:
           FIREBASE_PROJECT_ID: ${{ secrets.PRODUCTION_FIREBASE_PROJECT_ID || secrets.VITE_FB_PROJECT_ID }}
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-service-account.json
-        run: firebase deploy --only firestore:rules --project "$FIREBASE_PROJECT_ID" --non-interactive
+        run: firebase deploy --only firestore:rules,functions --project "$FIREBASE_PROJECT_ID" --non-interactive
 

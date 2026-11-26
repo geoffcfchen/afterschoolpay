@@ -63,17 +63,14 @@ firebase deploy --only firestore:rules --project afterschoolpay
 
 長期建議使用 GitHub Actions secrets 讓 production workflow 自動發布 rules，避免程式碼和 Firebase console 的 rules 版本不同。
 
-## Branch Protection 建議
+## Branch Protection
 
-建議在 GitHub 對 `main` 和 `staging` 開啟 branch protection：
+GitHub 已對 `main` 和 `staging` 開啟 branch protection：
 
 - Require a pull request before merging
 - Require status checks to pass before merging
 - Require branches to be up to date before merging
-- Required checks:
-  - `Lint`
-  - `Build`
-  - `Firebase Rules Sanity`
-  - `CI`
+- Require conversation resolution before merging
+- Required check: `CI`
 
-production `main` 可再加上 require approval，讓正式上線多一層人工確認。
+`main` 需要 1 個 approval；`staging` 允許 0 approval，方便先快速建立測試節奏。admin bypass 目前保留，避免緊急修正時被流程鎖住。

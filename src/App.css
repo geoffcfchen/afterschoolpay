@@ -1356,6 +1356,35 @@
   border-radius: 8px;
   background: #f9fcfb;
   padding: 14px;
+  text-decoration: none;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    transform 140ms ease;
+}
+
+.branch-card:hover {
+  border-color: var(--teal-dark);
+  box-shadow: 0 14px 30px rgba(16, 69, 75, 0.1);
+  transform: translateY(-1px);
+}
+
+.branch-card-accent-1 {
+  border-left: 5px solid #0f9f8f;
+}
+
+.branch-card-accent-2 {
+  border-left: 5px solid #d69a16;
+}
+
+.branch-card-accent-3 {
+  border-left: 5px solid #5478d4;
+}
+
+.branch-card-accent-4,
+.branch-card-accent-5,
+.branch-card-accent-6 {
+  border-left: 5px solid #9b6ad6;
 }
 
 .branch-card > span {
@@ -2716,6 +2745,17 @@
 .danger-table-action:hover {
   border-color: #d6533f;
   background: #ffe5df;
+}
+
+.warning-table-action {
+  border: 1px solid #f2d093;
+  background: #fff8e8;
+  color: #7a4b00;
+}
+
+.warning-table-action:hover {
+  border-color: #d69a16;
+  background: #fff0cb;
 }
 
 .manual-class-form,
@@ -4638,6 +4678,38 @@
   width: 48px;
 }
 
+.employee-card-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.employee-card-row .ledger-student-card {
+  width: 100%;
+}
+
+.employee-delete-button {
+  align-self: start;
+  width: 34px;
+  height: 34px;
+  border: 1px solid #f0c8c8;
+  border-radius: 8px;
+  background: #fff6f6;
+  color: #9b1c1c;
+  font: inherit;
+  font-size: 18px;
+  font-weight: 950;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.employee-delete-button:hover {
+  background: #ffecec;
+  border-color: #e99b9b;
+}
+
 .payroll-builder-panel {
   min-width: 0;
 }
@@ -4818,6 +4890,59 @@
   font-size: 13px;
   font-weight: 900;
   cursor: pointer;
+}
+
+.salary-class-automation {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(120px, 160px) minmax(120px, 160px) auto;
+  gap: 10px;
+  align-items: end;
+  border: 1px solid #e0ebea;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 10px;
+}
+
+.salary-class-automation > div:first-child {
+  display: grid;
+  gap: 6px;
+}
+
+.salary-class-automation span,
+.salary-class-automation label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.salary-class-automation input {
+  width: 100%;
+  min-width: 0;
+}
+
+.weekday-toggle-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.weekday-toggle-row button {
+  width: 34px;
+  height: 34px;
+  border: 1px solid #cfe0df;
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.weekday-toggle-row button.active {
+  border-color: var(--teal-dark);
+  background: var(--navy);
+  color: #ffffff;
 }
 
 .salary-session-table-wrap {
@@ -5134,6 +5259,7 @@
   .ledger-invoice-amount-grid,
   .financial-filter-controls,
   .salary-form-grid,
+  .salary-class-automation,
   .monthly-additional-row,
   .monthly-salary-breakdown,
   .salary-slip-total-row,

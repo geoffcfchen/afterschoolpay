@@ -207,6 +207,16 @@ function isStudentCourseSelected(classDraft, rowId, course) {
   return Boolean((classDraft?.studentDates?.[rowId]?.[course.id] || []).length);
 }
 
+function getSelectedCourseDateCount(sheet, row, classDraft) {
+  return sheet.courseBlocks.reduce((total, course) => {
+    if (!isStudentCourseSelected(classDraft, row.id, course)) {
+      return total;
+    }
+
+    return total + (classDraft.studentDates[row.id]?.[course.id] || []).length;
+  }, 0);
+}
+
 function getFeeDetailsText(option) {
   return option.details?.map((detail) => detail.value).join(" / ") || "";
 }
@@ -655,6 +665,7 @@ function StudentsCoursesPage() {
     useState("idle");
   const [classModalOpen, setClassModalOpen] = useState(false);
   const [studentDeleteTarget, setStudentDeleteTarget] = useState(null);
+  const [inactiveStudentTarget, setInactiveStudentTarget] = useState(null);
   const [studentModalOpen, setStudentModalOpen] = useState(false);
   const [dateModalCourseId, setDateModalCourseId] = useState("");
   const [feeModalOpen, setFeeModalOpen] = useState(false);
@@ -689,6 +700,8 @@ function StudentsCoursesPage() {
 
       try {
         const loadedWorkspace = await loadOrganizationWorkspace(user);
+        const requestedBranchId =
+          new URLSearchParams(window.location.search).get("branch") || "";
 
         if (active) {
           setWorkspace(loadedWorkspace);
@@ -697,6 +710,10 @@ function StudentsCoursesPage() {
               (branch) => branch.id === currentBranchId,
             )
               ? currentBranchId
+              : loadedWorkspace.visibleBranches.some(
+                    (branch) => branch.id === requestedBranchId,
+                  )
+                ? requestedBranchId
               : loadedWorkspace.visibleBranches[0]?.id || "",
           );
           setAuthStatus("ready");
@@ -1081,6 +1098,7 @@ function StudentsCoursesPage() {
       !classModalOpen &&
       !branchModalOpen &&
       !studentDeleteTarget &&
+      !inactiveStudentTarget &&
       !studentModalOpen &&
       !dateModalCourseId &&
       !feeModalOpen
@@ -1091,6 +1109,11 @@ function StudentsCoursesPage() {
     const originalOverflow = document.body.style.overflow;
     const handleKeyDown = (event) => {
       if (event.key === "Escape") {
+        if (inactiveStudentTarget) {
+          setInactiveStudentTarget(null);
+          return;
+        }
+
         if (studentDeleteTarget) {
           setStudentDeleteTarget(null);
           return;
@@ -1143,6 +1166,7 @@ function StudentsCoursesPage() {
     branchModalOpen,
     dateModalCourseId,
     feeModalOpen,
+    inactiveStudentTarget,
     invoicePreviewOpen,
     studentDeleteTarget,
     studentModalOpen,
@@ -1224,6 +1248,7 @@ function StudentsCoursesPage() {
       await syncStudentAccountsFromClassSheets({
         branch: snapshot.selectedBranch,
         classSheets: snapshot.result.classSheets,
+        invoiceState: snapshot.invoiceState,
         orgId: snapshot.orgId,
         savedByUid: snapshot.savedByUid,
       });
@@ -1716,6 +1741,7 @@ function StudentsCoursesPage() {
     );
     setSelectedInvoiceRowId(nextSelectedRowId);
     setStudentDeleteTarget(null);
+    setInactiveStudentTarget(null);
     markWorkspaceDirty();
   };
 
@@ -2960,6 +2986,22 @@ function StudentsCoursesPage() {
                           selectedClassDraft.studentFeeCodes[row.id] || [];
                         const customFees =
                           selectedClassDraft.studentCustomFees[row.id] || [];
+                        const selectedCourseCount =
+                          selectedClassSheet.courseBlocks.filter((course) =>
+                            isStudentCourseSelected(
+                              selectedClassDraft,
+                              row.id,
+                              course,
+                            ),
+                          ).length;
+                        const selectedCourseDateCount =
+                          getSelectedCourseDateCount(
+                            selectedClassSheet,
+                            row,
+                            selectedClassDraft,
+                          );
+                        const needsClassStatusCheck =
+                          selectedCourseCount > 0 && selectedCourseDateCount === 0;
 
                         return (
                           <tr
@@ -3163,6 +3205,15 @@ function StudentsCoursesPage() {
                                 >
                                   預覽
                                 </button>
+                                {needsClassStatusCheck ? (
+                                  <button
+                                    className="table-action-button warning-table-action"
+                                    onClick={() => setInactiveStudentTarget(row)}
+                                    type="button"
+                                  >
+                                    在班？
+                                  </button>
+                                ) : null}
                                 <button
                                   className="table-action-button danger-table-action"
                                   onClick={() => setStudentDeleteTarget(row)}
@@ -3363,6 +3414,73 @@ function StudentsCoursesPage() {
                   </button>
                 </div>
               </form>
+            </section>
+          </div>
+        ) : null}
+        {inactiveStudentTarget && selectedClassSheet ? (
+          <div
+            className="invoice-modal-backdrop"
+            onClick={() => setInactiveStudentTarget(null)}
+          >
+            <section
+              aria-labelledby="inactive-student-modal-title"
+              aria-modal="true"
+              className="delete-student-modal"
+              onClick={(event) => event.stopPropagation()}
+              role="dialog"
+            >
+              <div className="invoice-modal-heading warning-modal-heading">
+                <div>
+                  <p className="dashboard-kicker">在班確認</p>
+                  <h2 id="inactive-student-modal-title">
+                    這位學生下期沒有課程日期
+                  </h2>
+                  <p>
+                    若學生已離班，可以直接從目前班級清除；系統會自動儲存並同步學生帳戶關聯。
+                  </p>
+                </div>
+                <button
+                  className="modal-close-icon"
+                  onClick={() => setInactiveStudentTarget(null)}
+                  type="button"
+                >
+                  關閉
+                </button>
+              </div>
+
+              <div className="delete-warning-body">
+                <span aria-hidden="true" className="delete-warning-icon">
+                  !
+                </span>
+                <div className="delete-warning-copy">
+                  <strong>{inactiveStudentTarget.studentName}</strong>
+                  <span>
+                    {selectedClassSheet.name} · 編號{" "}
+                    {inactiveStudentTarget.studentNumber || "未設定"}
+                  </span>
+                  <p>
+                    選「不在班，清除」會移除這位學生在本班的科目、日期與雜項資料。
+                    若只是尚未輸入日期，請選「仍在班」後補上課程日期。
+                  </p>
+                </div>
+              </div>
+
+              <div className="modal-form-actions delete-modal-actions">
+                <button
+                  className="danger-modal-button"
+                  onClick={() => handleDeleteStudent(inactiveStudentTarget)}
+                  type="button"
+                >
+                  不在班，清除
+                </button>
+                <button
+                  className="secondary-modal-button"
+                  onClick={() => setInactiveStudentTarget(null)}
+                  type="button"
+                >
+                  仍在班
+                </button>
+              </div>
             </section>
           </div>
         ) : null}

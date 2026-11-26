@@ -1,6 +1,7 @@
 import {
   arrayUnion,
   collection,
+  deleteDoc,
   doc,
   getDoc,
   onSnapshot,
@@ -95,6 +96,8 @@ const sortByName = (records) =>
 
 export function createSalaryClassDraft() {
   return {
+    defaultHourlyRate: "",
+    defaultHours: "",
     id: createStableId("salary-class"),
     className: "",
     sessions: Array.from({ length: EIGHT_LESSON_SESSION_COUNT }, (_, index) => ({
@@ -103,6 +106,7 @@ export function createSalaryClassDraft() {
       hourlyRate: "",
       hours: "",
     })),
+    weekdayPattern: [],
   };
 }
 
@@ -454,14 +458,16 @@ export function subscribeOrganizationEmployees({
     (snapshot) => {
       onChange(
         sortByName(
-          snapshot.docs.map((record) => ({
-            id: record.id,
-            ...record.data(),
-            metadata: {
-              fromCache: snapshot.metadata?.fromCache || false,
-              hasPendingWrites: snapshot.metadata?.hasPendingWrites || false,
-            },
-          })),
+          snapshot.docs
+            .map((record) => ({
+              id: record.id,
+              ...record.data(),
+              metadata: {
+                fromCache: snapshot.metadata?.fromCache || false,
+                hasPendingWrites: snapshot.metadata?.hasPendingWrites || false,
+              },
+            }))
+            .filter((employee) => employee.status !== "deleted"),
         ),
       );
     },
@@ -557,6 +563,45 @@ export async function updateTeacherSalarySlipStatus({
       ...paymentFields,
       status,
       statusUpdatedByUid: updatedByUid,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
+}
+
+export async function deleteTeacherSalarySlip({
+  employeeId,
+  orgId = DEFAULT_ORG_ID,
+  salarySlipId,
+}) {
+  if (!employeeId || !salarySlipId) {
+    throw new Error("缺少老師或薪資單資料。");
+  }
+
+  const db = requireFirestore();
+
+  await deleteDoc(
+    doc(getSalarySlipsCollection(db, orgId, employeeId), salarySlipId),
+  );
+}
+
+export async function deleteTeacherEmployee({
+  deletedByUid = "",
+  employeeId,
+  orgId = DEFAULT_ORG_ID,
+}) {
+  if (!employeeId) {
+    throw new Error("缺少老師資料。");
+  }
+
+  const db = requireFirestore();
+
+  await setDoc(
+    getEmployeeRef(db, orgId, employeeId),
+    {
+      deletedAt: serverTimestamp(),
+      deletedByUid,
+      status: "deleted",
       updatedAt: serverTimestamp(),
     },
     { merge: true },

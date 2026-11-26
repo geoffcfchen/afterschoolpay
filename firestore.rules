@@ -224,7 +224,9 @@ service cloud.firestore {
           allow create, update: if (canUsePayroll(orgId)
             && canAccessBranch(orgId, request.resource.data.branchId))
             || isBootstrapOwner();
-          allow delete: if isOrgOwner(orgId) || isBootstrapOwner();
+          allow delete: if (canUsePayroll(orgId)
+            && canAccessBranch(orgId, resource.data.branchId))
+            || isBootstrapOwner();
         }
       }
 

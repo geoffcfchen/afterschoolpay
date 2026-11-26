@@ -140,6 +140,12 @@ function getModulesBySection(section) {
     .filter(Boolean);
 }
 
+function getBranchAccentIndex(branch, index) {
+  const match = String(branch.id || "").match(/\d+/);
+
+  return match ? Number(match[0]) : index + 1;
+}
+
 function DashboardPage() {
   const navigate = useNavigate();
   const [authStatus, setAuthStatus] = useState(auth ? "checking" : "error");
@@ -349,14 +355,21 @@ function DashboardPage() {
                 <h2 id="branches-title">你可以查看的分校</h2>
               </div>
               <div className="branch-list">
-                {workspace.visibleBranches.map((branch) => (
-                  <article className="branch-card" key={branch.id}>
+                {workspace.visibleBranches.map((branch, index) => (
+                  <Link
+                    className={`branch-card branch-card-accent-${getBranchAccentIndex(
+                      branch,
+                      index,
+                    )}`}
+                    key={branch.id}
+                    to={`/daily-ledger?branch=${encodeURIComponent(branch.id)}`}
+                  >
                     <span>{getBranchShortName(branch)}</span>
                     <div>
                       <h3>{getBranchName(branch)}</h3>
-                      <p>每日收支功能已準備設定</p>
+                      <p>點選後直接進入此分校的每日收支</p>
                     </div>
-                  </article>
+                  </Link>
                 ))}
               </div>
             </aside>

@@ -25,6 +25,7 @@ import {
 import { mergeDuplicateStudentAccounts } from "../lib/studentMergeData";
 import {
   SALARY_SLIP_STATUS_LABELS,
+  deleteTeacherSalarySlip,
   getPayrollTypeLabel,
   getSalarySlipStatusLabel,
   subscribeEmployeeSalarySlips,
@@ -145,6 +146,10 @@ function getPrimaryLegacyNumber(student) {
       sensitivity: "base",
     }),
   )[0];
+}
+
+function formatNullableDate(value) {
+  return value ? formatDateOnly(value) : "未記錄";
 }
 
 function getStudentBranchClasses(student) {
@@ -377,6 +382,7 @@ function DailyLedgerPage() {
   const [updatingSalarySlipId, setUpdatingSalarySlipId] = useState("");
   const [salaryStatusMessage, setSalaryStatusMessage] = useState("");
   const [printSalarySlip, setPrintSalarySlip] = useState(null);
+  const [salarySlipDeleteTarget, setSalarySlipDeleteTarget] = useState(null);
   const [expenseRecords, setExpenseRecords] = useState([]);
   const [expenseLoadStatus, setExpenseLoadStatus] = useState("idle");
   const [expenseLoadError, setExpenseLoadError] = useState("");
@@ -417,6 +423,8 @@ function DailyLedgerPage() {
 
       try {
         const loadedWorkspace = await loadOrganizationWorkspace(user);
+        const requestedBranchId =
+          new URLSearchParams(window.location.search).get("branch") || "";
 
         if (active) {
           setWorkspace(loadedWorkspace);
@@ -425,6 +433,10 @@ function DailyLedgerPage() {
               (branch) => branch.id === currentBranchId,
             )
               ? currentBranchId
+              : loadedWorkspace.visibleBranches.some(
+                    (branch) => branch.id === requestedBranchId,
+                  )
+                ? requestedBranchId
               : loadedWorkspace.visibleBranches[0]?.id || "",
           );
           setAuthStatus("ready");
@@ -952,7 +964,8 @@ function DailyLedgerPage() {
       !printSalarySlip &&
       !printPayment &&
       !paymentTargetInvoice &&
-      !studentMergeModalOpen
+      !studentMergeModalOpen &&
+      !salarySlipDeleteTarget
     ) {
       return undefined;
     }
@@ -965,6 +978,7 @@ function DailyLedgerPage() {
         setPrintPayment(null);
         setPaymentTargetInvoice(null);
         setStudentMergeModalOpen(false);
+        setSalarySlipDeleteTarget(null);
       }
     };
 
@@ -980,6 +994,7 @@ function DailyLedgerPage() {
     printInvoice,
     printPayment,
     printSalarySlip,
+    salarySlipDeleteTarget,
     studentMergeModalOpen,
   ]);
 
@@ -1335,6 +1350,35 @@ function DailyLedgerPage() {
     } catch (error) {
       console.error("Unable to update teacher salary slip status:", error);
       setSalaryStatusMessage("狀態更新失敗。請確認 Firestore 權限後再試一次。");
+    } finally {
+      setUpdatingSalarySlipId("");
+    }
+  };
+
+  const handleDeleteSalarySlip = async () => {
+    if (
+      !selectedEmployee?.id ||
+      !salarySlipDeleteTarget?.id ||
+      !workspace?.activeOrgId ||
+      updatingSalarySlipId
+    ) {
+      return;
+    }
+
+    setUpdatingSalarySlipId(salarySlipDeleteTarget.id);
+    setSalaryStatusMessage("");
+
+    try {
+      await deleteTeacherSalarySlip({
+        employeeId: selectedEmployee.id,
+        orgId: workspace.activeOrgId,
+        salarySlipId: salarySlipDeleteTarget.id,
+      });
+      setSalarySlipDeleteTarget(null);
+      setSalaryStatusMessage("已刪除老師薪資單。");
+    } catch (error) {
+      console.error("Unable to delete teacher salary slip:", error);
+      setSalaryStatusMessage("刪除失敗。請確認 Firestore 權限後再試一次。");
     } finally {
       setUpdatingSalarySlipId("");
     }
@@ -1945,6 +1989,9 @@ function DailyLedgerPage() {
                             {classBadges.map((record) => record.className).join("、") ||
                               "未分類"}
                           </small>
+                          <small>
+                            最近上課：{formatNullableDate(student.latestCourseDate)}
+                          </small>
                         </div>
                       </button>
                     );
@@ -2440,12 +2487,32 @@ function DailyLedgerPage() {
                               ))}
                             </select>
                           </label>
+                          {getSalarySlipStatus(salarySlip) === "unpaid" ? (
+                            <button
+                              className="table-action-button primary"
+                              disabled={updatingSalarySlipId === salarySlip.id}
+                              onClick={() =>
+                                handleSalaryStatusChange(salarySlip, "paid")
+                              }
+                              type="button"
+                            >
+                              結算
+                            </button>
+                          ) : null}
                           <button
                             className="table-action-button"
                             onClick={() => setPrintSalarySlip(salarySlip)}
                             type="button"
                           >
                             列印
+                          </button>
+                          <button
+                            className="table-action-button danger-table-action"
+                            disabled={updatingSalarySlipId === salarySlip.id}
+                            onClick={() => setSalarySlipDeleteTarget(salarySlip)}
+                            type="button"
+                          >
+                            刪除
                           </button>
                         </div>
                       </article>
@@ -2908,6 +2975,10 @@ function DailyLedgerPage() {
                               .map((record) => record.className)
                               .join("、") || "未分類"}
                           </small>
+                          <small>
+                            最近上課：{formatNullableDate(student.latestCourseDate)} ·
+                            更新：{formatDateTime(student.updatedAt)}
+                          </small>
                         </span>
                       </label>
                     );
@@ -2945,6 +3016,76 @@ function DailyLedgerPage() {
                 className="secondary-modal-button"
                 disabled={mergeSaveStatus === "saving"}
                 onClick={() => setStudentMergeModalOpen(false)}
+                type="button"
+              >
+                取消
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {salarySlipDeleteTarget ? (
+        <div
+          className="invoice-modal-backdrop"
+          onClick={() => setSalarySlipDeleteTarget(null)}
+        >
+          <section
+            aria-labelledby="ledger-delete-salary-slip-title"
+            aria-modal="true"
+            className="delete-student-modal"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+          >
+            <div className="invoice-modal-heading warning-modal-heading">
+              <div>
+                <p className="dashboard-kicker">刪除薪資單</p>
+                <h2 id="ledger-delete-salary-slip-title">確認刪除此薪資單？</h2>
+                <p>刪除後不會再列入每日收支與老師薪資紀錄。</p>
+              </div>
+              <button
+                className="modal-close-icon"
+                onClick={() => setSalarySlipDeleteTarget(null)}
+                type="button"
+              >
+                關閉
+              </button>
+            </div>
+
+            <div className="delete-warning-body">
+              <span aria-hidden="true" className="delete-warning-icon">
+                !
+              </span>
+              <div className="delete-warning-copy">
+                <strong>
+                  {salarySlipDeleteTarget.salarySlipNumber ||
+                    salarySlipDeleteTarget.id}
+                </strong>
+                <span>
+                  {selectedEmployee?.name || "未命名老師"} ·{" "}
+                  {formatCurrency(salarySlipDeleteTarget.total)}
+                </span>
+                <p>
+                  如果只是已經發放，請使用「結算」或改狀態；只有輸入錯誤才建議刪除。
+                </p>
+              </div>
+            </div>
+
+            <div className="modal-form-actions delete-modal-actions">
+              <button
+                className="danger-modal-button"
+                disabled={updatingSalarySlipId === salarySlipDeleteTarget.id}
+                onClick={handleDeleteSalarySlip}
+                type="button"
+              >
+                {updatingSalarySlipId === salarySlipDeleteTarget.id
+                  ? "刪除中..."
+                  : "刪除薪資單"}
+              </button>
+              <button
+                className="secondary-modal-button"
+                disabled={updatingSalarySlipId === salarySlipDeleteTarget.id}
+                onClick={() => setSalarySlipDeleteTarget(null)}
                 type="button"
               >
                 取消

@@ -14,6 +14,8 @@ import {
   calculateSalarySessionAmount,
   createSalaryClassDraft,
   createTeacherEmployee,
+  deleteTeacherEmployee,
+  deleteTeacherSalarySlip,
   getPayrollTypeLabel,
   getSalarySlipStatusLabel,
   saveTeacherSalarySlip,
@@ -24,6 +26,15 @@ import {
 const PAYROLL_TYPE_OPTIONS = [
   { value: "monthly", label: PAYROLL_TYPE_LABELS.monthly },
   { value: "eightLessons", label: PAYROLL_TYPE_LABELS.eightLessons },
+];
+const WEEKDAY_OPTIONS = [
+  { value: 1, label: "一" },
+  { value: 2, label: "二" },
+  { value: 3, label: "三" },
+  { value: 4, label: "四" },
+  { value: 5, label: "五" },
+  { value: 6, label: "六" },
+  { value: 7, label: "日" },
 ];
 
 function getWorkspaceErrorMessage(error) {
@@ -61,6 +72,66 @@ function todayDateValue() {
 
 function currentMonthValue() {
   return new Date().toISOString().slice(0, 7);
+}
+
+function parseDateInput(value) {
+  const [year, month, date] = String(value || "")
+    .split("-")
+    .map(Number);
+
+  if (!year || !month || !date) {
+    return null;
+  }
+
+  return new Date(year, month - 1, date);
+}
+
+function formatDateInput(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(
+    2,
+    "0",
+  )}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function addDays(date, days) {
+  const nextDate = new Date(date);
+  nextDate.setDate(nextDate.getDate() + days);
+
+  return nextDate;
+}
+
+function getIsoWeekday(date) {
+  const day = date.getDay();
+
+  return day === 0 ? 7 : day;
+}
+
+function normalizeWeekdayPattern(pattern = []) {
+  return [...new Set(pattern.map(Number))]
+    .filter((weekday) => weekday >= 1 && weekday <= 7)
+    .sort((first, second) => first - second);
+}
+
+function buildDateSequence(startDateValue, weekdayPattern, count) {
+  const startDate = parseDateInput(startDateValue);
+  const pattern = normalizeWeekdayPattern(weekdayPattern);
+
+  if (!startDate || !pattern.length || count <= 0) {
+    return [];
+  }
+
+  const dates = [formatDateInput(startDate)];
+  let cursor = startDate;
+
+  while (dates.length < count) {
+    cursor = addDays(cursor, 1);
+
+    if (pattern.includes(getIsoWeekday(cursor))) {
+      dates.push(formatDateInput(cursor));
+    }
+  }
+
+  return dates;
 }
 
 function createAdditionalSalaryItem() {
@@ -124,6 +195,8 @@ function TeacherPayrollPage() {
   const [salarySlipSaveStatus, setSalarySlipSaveStatus] = useState("idle");
   const [salarySlipMessage, setSalarySlipMessage] = useState("");
   const [lastGeneratedSalarySlipId, setLastGeneratedSalarySlipId] = useState("");
+  const [employeeDeleteTarget, setEmployeeDeleteTarget] = useState(null);
+  const [salarySlipDeleteTarget, setSalarySlipDeleteTarget] = useState(null);
 
   useEffect(() => {
     if (!auth) {
@@ -149,6 +222,8 @@ function TeacherPayrollPage() {
 
       try {
         const loadedWorkspace = await loadOrganizationWorkspace(user);
+        const requestedBranchId =
+          new URLSearchParams(window.location.search).get("branch") || "";
 
         if (active) {
           setWorkspace(loadedWorkspace);
@@ -157,6 +232,10 @@ function TeacherPayrollPage() {
               (branch) => branch.id === currentBranchId,
             )
               ? currentBranchId
+              : loadedWorkspace.visibleBranches.some(
+                    (branch) => branch.id === requestedBranchId,
+                  )
+                ? requestedBranchId
               : loadedWorkspace.visibleBranches[0]?.id || "",
           );
           setAuthStatus("ready");
@@ -451,18 +530,121 @@ function TeacherPayrollPage() {
     );
   };
 
-  const updateSalarySession = (classId, sessionId, changes) => {
+  const applySalaryDatesFromSession = (
+    classDraft,
+    sessionIndex,
+    startDate,
+    weekdayPattern = classDraft.weekdayPattern,
+  ) => {
+    const pattern = normalizeWeekdayPattern(weekdayPattern);
+
+    if (!startDate || !pattern.length) {
+      return classDraft.sessions;
+    }
+
+    const generatedDates = buildDateSequence(
+      startDate,
+      pattern,
+      classDraft.sessions.length - sessionIndex,
+    );
+
+    return classDraft.sessions.map((session, index) =>
+      index >= sessionIndex
+        ? {
+            ...session,
+            date: generatedDates[index - sessionIndex] || session.date,
+          }
+        : session,
+    );
+  };
+
+  const toggleSalaryClassWeekday = (classId, weekday) => {
+    setSalaryClasses((current) =>
+      current.map((classDraft) => {
+        if (classDraft.id !== classId) {
+          return classDraft;
+        }
+
+        const currentPattern = normalizeWeekdayPattern(classDraft.weekdayPattern);
+        const nextPattern = currentPattern.includes(weekday)
+          ? currentPattern.filter((item) => item !== weekday)
+          : normalizeWeekdayPattern([...currentPattern, weekday]);
+        const firstSessionDate = classDraft.sessions.find((session) => session.date)
+          ?.date;
+
+        return {
+          ...classDraft,
+          sessions: firstSessionDate
+            ? applySalaryDatesFromSession(
+                classDraft,
+                0,
+                firstSessionDate,
+                nextPattern,
+              )
+            : classDraft.sessions,
+          weekdayPattern: nextPattern,
+        };
+      }),
+    );
+  };
+
+  const applyDefaultSalaryValues = (classId) => {
     setSalaryClasses((current) =>
       current.map((classDraft) =>
         classDraft.id === classId
           ? {
               ...classDraft,
-              sessions: classDraft.sessions.map((session) =>
-                session.id === sessionId ? { ...session, ...changes } : session,
-              ),
+              sessions: classDraft.sessions.map((session) => ({
+                ...session,
+                hourlyRate:
+                  classDraft.defaultHourlyRate === ""
+                    ? session.hourlyRate
+                    : classDraft.defaultHourlyRate,
+                hours:
+                  classDraft.defaultHours === "" ? session.hours : classDraft.defaultHours,
+              })),
             }
           : classDraft,
       ),
+    );
+  };
+
+  const updateSalarySession = (classId, sessionId, changes) => {
+    setSalaryClasses((current) =>
+      current.map((classDraft) => {
+        if (classDraft.id !== classId) {
+          return classDraft;
+        }
+
+        const sessionIndex = classDraft.sessions.findIndex(
+          (session) => session.id === sessionId,
+        );
+
+        if (sessionIndex < 0) {
+          return classDraft;
+        }
+
+        const sessions = classDraft.sessions.map((session) =>
+          session.id === sessionId ? { ...session, ...changes } : session,
+        );
+        const nextDraft = {
+          ...classDraft,
+          sessions,
+        };
+
+        if (changes.date && normalizeWeekdayPattern(classDraft.weekdayPattern).length) {
+          return {
+            ...nextDraft,
+            sessions: applySalaryDatesFromSession(
+              nextDraft,
+              sessionIndex,
+              changes.date,
+            ),
+          };
+        }
+
+        return nextDraft;
+      }),
     );
   };
 
@@ -528,6 +710,88 @@ function TeacherPayrollPage() {
       setSalarySlipSaveStatus("error");
     }
   };
+
+  const handleDeleteEmployee = async () => {
+    if (
+      !employeeDeleteTarget?.id ||
+      !workspace?.activeOrgId ||
+      employeeSaveStatus === "saving"
+    ) {
+      return;
+    }
+
+    setEmployeeSaveStatus("saving");
+    setEmployeeSaveError("");
+
+    try {
+      await deleteTeacherEmployee({
+        deletedByUid: currentUser?.uid || "",
+        employeeId: employeeDeleteTarget.id,
+        orgId: workspace.activeOrgId,
+      });
+
+      setEmployeeDeleteTarget(null);
+      setSelectedEmployeeId("");
+      setEmployeeSaveStatus("idle");
+      setSalarySlipMessage("已移除老師。");
+    } catch (error) {
+      console.error("Unable to delete teacher employee:", error);
+      setEmployeeSaveError(error.message || "無法移除老師。");
+      setEmployeeSaveStatus("error");
+    }
+  };
+
+  const handleDeleteSalarySlip = async () => {
+    if (
+      !selectedEmployee?.id ||
+      !salarySlipDeleteTarget?.id ||
+      !workspace?.activeOrgId ||
+      salarySlipSaveStatus === "saving"
+    ) {
+      return;
+    }
+
+    setSalarySlipSaveStatus("saving");
+    setSalarySlipMessage("");
+
+    try {
+      await deleteTeacherSalarySlip({
+        employeeId: selectedEmployee.id,
+        orgId: workspace.activeOrgId,
+        salarySlipId: salarySlipDeleteTarget.id,
+      });
+
+      setSalarySlipDeleteTarget(null);
+      setSalarySlipSaveStatus("idle");
+      setSalarySlipMessage("已刪除老師薪資單。");
+    } catch (error) {
+      console.error("Unable to delete teacher salary slip:", error);
+      setSalarySlipSaveStatus("error");
+      setSalarySlipMessage(error.message || "無法刪除老師薪資單。");
+    }
+  };
+
+  useEffect(() => {
+    if (!employeeDeleteTarget && !salarySlipDeleteTarget) {
+      return undefined;
+    }
+
+    const originalOverflow = document.body.style.overflow;
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setEmployeeDeleteTarget(null);
+        setSalarySlipDeleteTarget(null);
+      }
+    };
+
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [employeeDeleteTarget, salarySlipDeleteTarget]);
 
   const renderAdditionalSalaryPanel = ({ baseLabel, baseTotal }) => {
     const titleId = `additional-salary-title-${activePayrollType}`;
@@ -830,25 +1094,39 @@ function TeacherPayrollPage() {
                   const active = selectedEmployee?.id === employee.id;
 
                   return (
-                    <button
-                      aria-pressed={active}
-                      className={`ledger-student-card employee-card ${
-                        active ? "active" : ""
-                      }`}
+                    <article
+                      className={`employee-card-row ${active ? "active" : ""}`}
                       key={employee.id}
-                      onClick={() => {
-                        setSelectedEmployeeId(employee.id);
-                        setPayrollType("");
-                        setSalarySlipMessage("");
-                      }}
-                      type="button"
                     >
-                      <span>{getPayrollTypeLabel(employee.compensationType)}</span>
-                      <div>
-                        <strong>{employee.name || "未命名老師"}</strong>
-                        <small>{employee.status === "active" ? "在職" : "停用"}</small>
-                      </div>
-                    </button>
+                      <button
+                        aria-pressed={active}
+                        className={`ledger-student-card employee-card ${
+                          active ? "active" : ""
+                        }`}
+                        onClick={() => {
+                          setSelectedEmployeeId(employee.id);
+                          setPayrollType("");
+                          setSalarySlipMessage("");
+                        }}
+                        type="button"
+                      >
+                        <span>{getPayrollTypeLabel(employee.compensationType)}</span>
+                        <div>
+                          <strong>{employee.name || "未命名老師"}</strong>
+                          <small>
+                            {employee.status === "active" ? "在職" : "停用"}
+                          </small>
+                        </div>
+                      </button>
+                      <button
+                        aria-label={`移除 ${employee.name || "未命名老師"}`}
+                        className="employee-delete-button"
+                        onClick={() => setEmployeeDeleteTarget(employee)}
+                        type="button"
+                      >
+                        ×
+                      </button>
+                    </article>
                   );
                 })}
               </div>
@@ -973,6 +1251,74 @@ function TeacherPayrollPage() {
                                   移除
                                 </button>
                               </div>
+                            </div>
+
+                            <div className="salary-class-automation">
+                              <div>
+                                <span>固定上課日</span>
+                                <div className="weekday-toggle-row">
+                                  {WEEKDAY_OPTIONS.map((option) => {
+                                    const active = normalizeWeekdayPattern(
+                                      classDraft.weekdayPattern,
+                                    ).includes(option.value);
+
+                                    return (
+                                      <button
+                                        aria-pressed={active}
+                                        className={active ? "active" : ""}
+                                        key={option.value}
+                                        onClick={() =>
+                                          toggleSalaryClassWeekday(
+                                            classDraft.id,
+                                            option.value,
+                                          )
+                                        }
+                                        type="button"
+                                      >
+                                        {option.label}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                              <label>
+                                套用時薪
+                                <input
+                                  min="0"
+                                  onChange={(event) =>
+                                    updateSalaryClass(classDraft.id, {
+                                      defaultHourlyRate: event.target.value,
+                                    })
+                                  }
+                                  placeholder="例如：500"
+                                  type="number"
+                                  value={classDraft.defaultHourlyRate || ""}
+                                />
+                              </label>
+                              <label>
+                                套用時數
+                                <input
+                                  min="0"
+                                  onChange={(event) =>
+                                    updateSalaryClass(classDraft.id, {
+                                      defaultHours: event.target.value,
+                                    })
+                                  }
+                                  placeholder="例如：2"
+                                  step="0.5"
+                                  type="number"
+                                  value={classDraft.defaultHours || ""}
+                                />
+                              </label>
+                              <button
+                                className="secondary-modal-button"
+                                onClick={() =>
+                                  applyDefaultSalaryValues(classDraft.id)
+                                }
+                                type="button"
+                              >
+                                套用全部
+                              </button>
                             </div>
 
                             <div className="salary-session-table-wrap">
@@ -1136,6 +1482,13 @@ function TeacherPayrollPage() {
                               {getSalarySlipStatusLabel(slip.status)}
                             </em>
                             <strong>{formatCurrency(slip.total)}</strong>
+                            <button
+                              className="table-action-button danger-table-action"
+                              onClick={() => setSalarySlipDeleteTarget(slip)}
+                              type="button"
+                            >
+                              刪除
+                            </button>
                           </div>
                         </article>
                       ))}
@@ -1153,6 +1506,129 @@ function TeacherPayrollPage() {
           </section>
         ) : null}
       </section>
+
+      {employeeDeleteTarget ? (
+        <div
+          className="invoice-modal-backdrop"
+          onClick={() => setEmployeeDeleteTarget(null)}
+        >
+          <section
+            aria-labelledby="delete-employee-title"
+            aria-modal="true"
+            className="delete-student-modal"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+          >
+            <div className="invoice-modal-heading warning-modal-heading">
+              <div>
+                <p className="dashboard-kicker">移除老師</p>
+                <h2 id="delete-employee-title">確認移除此老師？</h2>
+                <p>移除後不會再出現在老師清單；既有薪資單紀錄仍保留。</p>
+              </div>
+              <button
+                className="modal-close-icon"
+                onClick={() => setEmployeeDeleteTarget(null)}
+                type="button"
+              >
+                關閉
+              </button>
+            </div>
+
+            <div className="delete-warning-body">
+              <span aria-hidden="true" className="delete-warning-icon">
+                !
+              </span>
+              <div className="delete-warning-copy">
+                <strong>{employeeDeleteTarget.name || "未命名老師"}</strong>
+                <span>{selectedBranch?.name || "未記錄分校"}</span>
+                <p>若只是暫時不產生薪資單，可以取消不要移除。</p>
+              </div>
+            </div>
+
+            <div className="modal-form-actions delete-modal-actions">
+              <button
+                className="danger-modal-button"
+                disabled={employeeSaveStatus === "saving"}
+                onClick={handleDeleteEmployee}
+                type="button"
+              >
+                {employeeSaveStatus === "saving" ? "移除中..." : "移除老師"}
+              </button>
+              <button
+                className="secondary-modal-button"
+                disabled={employeeSaveStatus === "saving"}
+                onClick={() => setEmployeeDeleteTarget(null)}
+                type="button"
+              >
+                取消
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {salarySlipDeleteTarget ? (
+        <div
+          className="invoice-modal-backdrop"
+          onClick={() => setSalarySlipDeleteTarget(null)}
+        >
+          <section
+            aria-labelledby="delete-salary-slip-title"
+            aria-modal="true"
+            className="delete-student-modal"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+          >
+            <div className="invoice-modal-heading warning-modal-heading">
+              <div>
+                <p className="dashboard-kicker">刪除薪資單</p>
+                <h2 id="delete-salary-slip-title">確認刪除此薪資單？</h2>
+                <p>刪除後這張薪資單不會出現在老師薪資或每日收支。</p>
+              </div>
+              <button
+                className="modal-close-icon"
+                onClick={() => setSalarySlipDeleteTarget(null)}
+                type="button"
+              >
+                關閉
+              </button>
+            </div>
+
+            <div className="delete-warning-body">
+              <span aria-hidden="true" className="delete-warning-icon">
+                !
+              </span>
+              <div className="delete-warning-copy">
+                <strong>
+                  {salarySlipDeleteTarget.salarySlipNumber ||
+                    salarySlipDeleteTarget.id}
+                </strong>
+                <span>{formatCurrency(salarySlipDeleteTarget.total)}</span>
+                <p>如果只是已發放，請到每日收支改狀態；只有打錯才建議刪除。</p>
+              </div>
+            </div>
+
+            <div className="modal-form-actions delete-modal-actions">
+              <button
+                className="danger-modal-button"
+                disabled={salarySlipSaveStatus === "saving"}
+                onClick={handleDeleteSalarySlip}
+                type="button"
+              >
+                {salarySlipSaveStatus === "saving" ? "刪除中..." : "刪除薪資單"}
+              </button>
+              <button
+                className="secondary-modal-button"
+                disabled={salarySlipSaveStatus === "saving"}
+                onClick={() => setSalarySlipDeleteTarget(null)}
+                type="button"
+              >
+                取消
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </main>
   );
 }

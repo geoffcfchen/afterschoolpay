@@ -3,6 +3,7 @@ import {
   collection,
   doc,
   getDoc,
+  getDocs,
   onSnapshot,
   orderBy,
   query,
@@ -106,7 +107,40 @@ function buildBranchClassSnapshot(branch, classSheet) {
   };
 }
 
-function buildStudentAccountsFromClassSheets(classSheets = [], branch) {
+function uniqueValues(...groups) {
+  return [
+    ...new Set(
+      groups.flat().filter((value) => value !== undefined && value !== null && value !== ""),
+    ),
+  ];
+}
+
+function getLatestDate(dates = []) {
+  return sortDates(dates).at(-1) || "";
+}
+
+function sortDates(dates = []) {
+  return [...new Set(dates || [])]
+    .filter(Boolean)
+    .sort((first, second) => String(first).localeCompare(String(second)));
+}
+
+function getDraftStudentDates(classSheet, row, invoiceState) {
+  const classDraft = invoiceState?.classes?.[classSheet.id];
+  const draftDates = classDraft?.studentDates?.[row.id];
+
+  if (!draftDates) {
+    return row.courseDates || {};
+  }
+
+  return draftDates;
+}
+
+function buildStudentAccountsFromClassSheets(
+  classSheets = [],
+  branch,
+  invoiceState = null,
+) {
   const accounts = new Map();
 
   classSheets.forEach((classSheet) => {
@@ -122,10 +156,15 @@ function buildStudentAccountsFromClassSheets(classSheets = [], branch) {
         classIds: new Set(),
         classNames: new Set(),
         legacyStudentNumbers: new Set(),
+        latestCourseDate: "",
         name: row.studentName,
         normalizedName: normalizeStudentName(row.studentName),
         studentId: row.studentId,
       };
+      const studentDatesByCourse = getDraftStudentDates(classSheet, row, invoiceState);
+      const latestRowCourseDate = getLatestDate(
+        Object.values(studentDatesByCourse).flat(),
+      );
 
       if (branch?.id) {
         account.branchIds.add(branch.id);
@@ -148,6 +187,14 @@ function buildStudentAccountsFromClassSheets(classSheets = [], branch) {
         account.legacyStudentNumbers.add(row.studentNumber);
       }
 
+      if (
+        latestRowCourseDate &&
+        (!account.latestCourseDate ||
+          latestRowCourseDate.localeCompare(account.latestCourseDate) > 0)
+      ) {
+        account.latestCourseDate = latestRowCourseDate;
+      }
+
       accounts.set(row.studentId, account);
     });
   });
@@ -159,18 +206,31 @@ function buildStudentAccountsFromClassSheets(classSheets = [], branch) {
     classIds: [...account.classIds],
     classNames: [...account.classNames],
     legacyStudentNumbers: [...account.legacyStudentNumbers],
+    latestCourseDate: account.latestCourseDate,
     name: account.name,
     normalizedName: account.normalizedName,
     studentId: account.studentId,
   }));
 }
 
-function addArrayUnionField(data, key, values) {
-  const cleanValues = [...new Set(values || [])].filter(Boolean);
+function withoutBranchMembership(student, branchId) {
+  const branchClassKeys = Array.isArray(student?.branchClassKeys)
+    ? student.branchClassKeys.filter((key) => !String(key).startsWith(`${branchId}:`))
+    : [];
+  const branchClasses = Array.isArray(student?.branchClasses)
+    ? student.branchClasses.filter((record) => record?.branchId !== branchId)
+    : [];
+  const branchIds = Array.isArray(student?.branchIds)
+    ? student.branchIds.filter((id) => id !== branchId)
+    : [];
 
-  if (cleanValues.length) {
-    data[key] = arrayUnion(...cleanValues);
-  }
+  return {
+    branchClassKeys,
+    branchClasses,
+    branchIds,
+    classIds: uniqueValues(branchClasses.map((record) => record.classId)),
+    classNames: uniqueValues(branchClasses.map((record) => record.className)),
+  };
 }
 
 function buildInvoiceLineItems(invoice) {
@@ -223,6 +283,7 @@ function createReceiptNumber(paymentRef, receivedAtIso) {
 export async function syncStudentAccountsFromClassSheets({
   branch,
   classSheets = [],
+  invoiceState = null,
   orgId = DEFAULT_ORG_ID,
   savedByUid = "",
 }) {
@@ -231,7 +292,24 @@ export async function syncStudentAccountsFromClassSheets({
   }
 
   const db = requireFirestore();
-  const accounts = buildStudentAccountsFromClassSheets(classSheets, branch);
+  const accounts = buildStudentAccountsFromClassSheets(
+    classSheets,
+    branch,
+    invoiceState,
+  );
+  const accountMap = new Map(accounts.map((account) => [account.studentId, account]));
+  const branchStudentsSnapshot = await getDocs(
+    query(getStudentsCollection(db, orgId), where("branchIds", "array-contains", branch.id)),
+  );
+  const existingBranchStudents = new Map(
+    branchStudentsSnapshot.docs.map((record) => [
+      record.id,
+      {
+        id: record.id,
+        ...record.data(),
+      },
+    ]),
+  );
   const accountSnapshots = await Promise.all(
     accounts.map((account) => getDoc(getStudentRef(db, orgId, account.studentId))),
   );
@@ -243,8 +321,27 @@ export async function syncStudentAccountsFromClassSheets({
 
     chunk.forEach((account, chunkIndex) => {
       const snapshot = accountSnapshots[index + chunkIndex];
+      const existing = snapshot.exists() ? snapshot.data() : {};
+      const otherBranches = withoutBranchMembership(existing, branch.id);
+      const branchClasses = [
+        ...otherBranches.branchClasses,
+        ...account.branchClasses,
+      ];
       const studentData = {
+        branchClassKeys: uniqueValues(
+          otherBranches.branchClassKeys,
+          account.branchClassKeys,
+        ),
+        branchClasses,
+        branchIds: uniqueValues(otherBranches.branchIds, account.branchIds),
+        classIds: uniqueValues(branchClasses.map((record) => record.classId)),
+        classNames: uniqueValues(branchClasses.map((record) => record.className)),
         importedByUid: savedByUid || "",
+        legacyStudentNumbers: uniqueValues(
+          existing.legacyStudentNumbers,
+          account.legacyStudentNumbers,
+        ),
+        latestCourseDate: account.latestCourseDate || existing.latestCourseDate || "",
         name: account.name,
         normalizedName: account.normalizedName,
         status: "active",
@@ -256,20 +353,34 @@ export async function syncStudentAccountsFromClassSheets({
         studentData.createdAt = serverTimestamp();
       }
 
-      addArrayUnionField(studentData, "branchClassKeys", account.branchClassKeys);
-      addArrayUnionField(studentData, "branchClasses", account.branchClasses);
-      addArrayUnionField(studentData, "branchIds", account.branchIds);
-      addArrayUnionField(studentData, "classIds", account.classIds);
-      addArrayUnionField(studentData, "classNames", account.classNames);
-      addArrayUnionField(
-        studentData,
-        "legacyStudentNumbers",
-        account.legacyStudentNumbers,
-      );
-
       batch.set(getStudentRef(db, orgId, account.studentId), studentData, {
         merge: true,
       });
+    });
+
+    await batch.commit();
+  }
+
+  const absentStudents = [...existingBranchStudents.values()].filter(
+    (student) => !accountMap.has(student.studentId || student.id),
+  );
+
+  for (let index = 0; index < absentStudents.length; index += chunkSize) {
+    const batch = writeBatch(db);
+    const chunk = absentStudents.slice(index, index + chunkSize);
+
+    chunk.forEach((student) => {
+      const nextMembership = withoutBranchMembership(student, branch.id);
+
+      batch.set(
+        getStudentRef(db, orgId, student.studentId || student.id),
+        {
+          ...nextMembership,
+          status: nextMembership.branchIds.length ? "active" : "inactive",
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
     });
 
     await batch.commit();
@@ -325,6 +436,7 @@ export async function saveStudentInvoiceNotice({
         : serverTimestamp(),
       lastInvoiceAt: serverTimestamp(),
       legacyStudentNumbers: arrayUnion(studentRow.studentNumber || ""),
+      latestCourseDate: billingPeriod.endDate || "",
       name: studentRow.studentName,
       normalizedName: normalizeStudentName(studentRow.studentName),
       status: "active",

@@ -1,5 +1,7 @@
 {
   "projects": {
-    "default": "afterschoolpay"
+    "default": "afterschoolpay",
+    "production": "afterschoolpay",
+    "staging": "afterschoolpay-staging"
   }
 }

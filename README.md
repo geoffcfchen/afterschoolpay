@@ -32,7 +32,11 @@ Afterschool Pay 是給補習班與課後照顧團隊使用的收費、薪資與�
 npm install
 ```
 
-建立 `.env.local`，填入 Firebase Web App 設定：
+複製 `.env.example` 成 `.env.local`，填入 Firebase Web App 設定：
+
+```bash
+cp .env.example .env.local
+```
 
 ```env
 VITE_FB_API_KEY=...
@@ -153,13 +157,50 @@ organizations/{orgId}/employees/{employeeId}/salarySlips/{salarySlipId}
 - `paid`：已發放
 - `void`：作廢
 
-## GitHub Pages 部署
+## CI / CD 與部署
 
 GitHub Actions workflow 位於：
 
 ```text
-.github/workflows/deploy.yml
+.github/workflows/ci.yml
+.github/workflows/deploy-staging.yml
+.github/workflows/deploy-production.yml
 ```
+
+建議流程是 feature branch -> PR -> `staging` -> 驗證 -> PR -> `main`。詳細流程請看：
+
+```text
+docs/release-process.md
+docs/environments.md
+```
+
+### CI
+
+PR、`staging` push 與 `main` push 會執行：
+
+```bash
+npm run lint
+npm run build
+```
+
+也會檢查 `firebase.json` 與 `firestore.rules` 是否存在。
+
+### Staging
+
+push 到 `staging` 後會部署到 Firebase Hosting，並同步發布 staging Firestore rules。請先建立 staging Firebase project，並在 GitHub repository secrets 設定：
+
+```text
+STAGING_FIREBASE_PROJECT_ID
+STAGING_FIREBASE_SERVICE_ACCOUNT_JSON
+STAGING_VITE_FB_API_KEY
+STAGING_VITE_FB_AUTH_DOMAIN
+STAGING_VITE_FB_STORAGE_BUCKET
+STAGING_VITE_FB_MESSAGING_SENDER_ID
+STAGING_VITE_FB_APP_ID
+STAGING_VITE_FB_MEASUREMENT_ID
+```
+
+### Production
 
 push 到 `main` 後會 build 並部署到 GitHub Pages。請在 GitHub repository secrets 設定：
 
@@ -171,6 +212,13 @@ VITE_FB_STORAGE_BUCKET
 VITE_FB_MESSAGING_SENDER_ID
 VITE_FB_APP_ID
 VITE_FB_MEASUREMENT_ID
+```
+
+如果要讓 GitHub Actions 自動發布 production Firestore rules，再設定：
+
+```text
+PRODUCTION_FIREBASE_PROJECT_ID
+PRODUCTION_FIREBASE_SERVICE_ACCOUNT_JSON
 ```
 
 GitHub Pages source 設定為 GitHub Actions，custom domain 使用：

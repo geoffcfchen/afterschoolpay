@@ -1,0 +1,115 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+      - staging
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+  push:
+    branches:
+      - main
+      - staging
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "24"
+  VITE_FB_API_KEY: ci-placeholder
+  VITE_FB_AUTH_DOMAIN: ci-placeholder.firebaseapp.com
+  VITE_FB_PROJECT_ID: ci-placeholder
+  VITE_FB_STORAGE_BUCKET: ci-placeholder.appspot.com
+  VITE_FB_MESSAGING_SENDER_ID: "000000000000"
+  VITE_FB_APP_ID: "1:000000000000:web:ci-placeholder"
+  VITE_FB_MEASUREMENT_ID: G-CIPLACEHOLDER
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run lint
+        run: npm run lint
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build project
+        run: npm run build
+
+  firebase-rules:
+    name: Firebase Rules Sanity
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Verify Firebase config files
+        run: |
+          test -s firebase.json
+          test -s firestore.rules
+          grep -q '"rules": "firestore.rules"' firebase.json
+
+  ci:
+    name: CI
+    runs-on: ubuntu-latest
+    needs:
+      - lint
+      - build
+      - firebase-rules
+    if: always()
+
+    steps:
+      - name: Verify all checks passed
+        run: |
+          if [ "${{ needs.lint.result }}" != "success" ]; then
+            echo "Lint failed"
+            exit 1
+          fi
+          if [ "${{ needs.build.result }}" != "success" ]; then
+            echo "Build failed"
+            exit 1
+          fi
+          if [ "${{ needs.firebase-rules.result }}" != "success" ]; then
+            echo "Firebase rules sanity failed"
+            exit 1
+          fi
+

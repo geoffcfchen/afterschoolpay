@@ -29,6 +29,11 @@ service cloud.firestore {
         && currentMember(orgId).data.roleLevel == 1;
     }
 
+    function isActiveOrgMember(orgId) {
+      return hasOrgMember(orgId)
+        && currentMember(orgId).data.status == "active";
+    }
+
     function isOrganizationCreator(orgId) {
       return signedIn()
         && exists(/databases/$(database)/documents/organizations/$(orgId))
@@ -233,6 +238,18 @@ service cloud.firestore {
       match /programs/{programId} {
         allow read: if hasOrgMember(orgId) || isBootstrapOwner();
         allow create, update, delete: if isOrgOwner(orgId) || isBootstrapOwner();
+      }
+
+      match /aiRequests/{requestId} {
+        allow read: if isActiveOrgMember(orgId) || isBootstrapOwner();
+        allow create, update: if isOrgOwner(orgId) || isBootstrapOwner();
+        allow delete: if isOrgOwner(orgId) || isBootstrapOwner();
+
+        match /messages/{messageId} {
+          allow read: if isActiveOrgMember(orgId) || isBootstrapOwner();
+          allow create, update: if isOrgOwner(orgId) || isBootstrapOwner();
+          allow delete: if isOrgOwner(orgId) || isBootstrapOwner();
+        }
       }
 
       match /students/{studentId} {

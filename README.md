@@ -12,6 +12,7 @@ Afterschool Pay 是給補習班與課後照顧團隊使用的收費、薪資與�
 - **點名表**：每個課程可開啟 A/B 班設定，同一位學生可在不同科目屬於不同 A/B 班，並可依課程與 A/B 班產生點名表。
 - **老師薪資**：在 `/teacher-payroll` 建立老師與薪資單，支援月薪、8 堂課、多課程、時薪、時數與多筆額外薪資原因。
 - **每日收支**：在 `/daily-ledger` 管理學生繳費通知單與老師薪資單狀態，並從這裡列印。
+- **AI 需求助手**：登入工作區後右下角會出現 AI 助手，可記錄目前頁面、瀏覽路徑與需求對話，並送出建立 PR 佇列。
 
 ## 主要頁面
 
@@ -131,6 +132,9 @@ organizations/{orgId}/students/{studentId}/payments/{paymentId}
 
 organizations/{orgId}/employees/{employeeId}
 organizations/{orgId}/employees/{employeeId}/salarySlips/{salarySlipId}
+
+organizations/{orgId}/aiRequests/{requestId}
+organizations/{orgId}/aiRequests/{requestId}/messages/{messageId}
 ```
 
 重要觀念：
@@ -141,6 +145,7 @@ organizations/{orgId}/employees/{employeeId}/salarySlips/{salarySlipId}
 - 同一位學生可以跨分校有多張繳費通知單；每日收支會在學生 profile 集中顯示。
 - 雜項表目前是分校層級設定，每個分校可以有自己的雜項費用表。
 - 老師資料存在 `employees`，老師薪資單存在該老師底下的 `salarySlips`。
+- AI 需求助手的對話存在 `aiRequests`；成員可讀取，建立需求、回覆與送出 PR 佇列走 Cloud Functions。
 
 ## 主要單據狀態
 
@@ -163,6 +168,7 @@ GitHub Actions workflow 位於：
 
 ```text
 .github/workflows/ci.yml
+.github/workflows/ai-assistant-pr.yml
 .github/workflows/deploy-staging.yml
 .github/workflows/deploy-production.yml
 ```
@@ -185,6 +191,37 @@ npm run build
 ```
 
 也會檢查 `firebase.json` 與 `firestore.rules` 是否存在。
+
+### AI 需求助手
+
+AI 需求助手分成三段：
+
+1. 前端浮動視窗記錄目前頁面、瀏覽路徑、選取文字與使用者描述。
+2. Cloud Functions 建立需求、儲存對話、產生中文釐清回覆，並把需求標記成等待建立 PR。
+3. GitHub Actions worker 會定時或手動讀取 Firestore queued requests，建立 `codex/ai-request-*` branch 與 PR，並把 PR URL 回寫到 Firestore。
+
+Cloud Functions 使用 Firebase Secret Manager 保存 OpenAI 金鑰：
+
+```bash
+firebase functions:secrets:set OPENAI_API_KEY
+```
+
+可選擇設定下列非敏感環境變數調整模型或 GitHub workflow：
+
+```text
+OPENAI_MODEL
+```
+
+如果沒有設定 `OPENAI_API_KEY`，AI 助手會使用內建中文 fallback 回覆，不會中斷使用者流程。
+
+GitHub Actions worker 需要 production Firebase secrets：
+
+```text
+PRODUCTION_FIREBASE_PROJECT_ID
+PRODUCTION_FIREBASE_SERVICE_ACCOUNT_JSON
+```
+
+目前 worker 會先建立一個保留需求脈絡的 PR。後續真正自動修改產品程式碼的 agent 可以接在同一個 workflow 裡，讀取 `docs/ai-requests/{requestId}.md` 後更新同一個 PR。
 
 ### Staging
 

@@ -104,6 +104,9 @@ jobs:
       - name: Check Cloud Functions source
         run: npm --prefix functions run lint
 
+      - name: Check Cloud Functions scripts
+        run: find functions/scripts -name '*.js' -print -exec node --check {} \;
+
   ci:
     name: CI
     runs-on: ubuntu-latest

@@ -1,0 +1,104 @@
+name: AI Assistant PR
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+    inputs:
+      orgId:
+        description: Firestore organization id
+        required: false
+      requestId:
+        description: AI assistant request id
+        required: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: ai-assistant-pr-${{ inputs.orgId || 'scheduled' }}-${{ inputs.requestId || github.run_id }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: "24"
+  ORG_ID: ${{ inputs.orgId }}
+  REQUEST_ID: ${{ inputs.requestId }}
+
+jobs:
+  create-pr:
+    name: Create AI Request PR
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install function dependencies
+        run: npm --prefix functions ci
+
+      - name: Write Firebase service account
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.PRODUCTION_FIREBASE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT_JSON" ]; then
+            echo "::error::Missing PRODUCTION_FIREBASE_SERVICE_ACCOUNT_JSON"
+            exit 1
+          fi
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/firebase-service-account.json"
+
+      - name: Export request context
+        id: export
+        env:
+          FIREBASE_PROJECT_ID: ${{ secrets.PRODUCTION_FIREBASE_PROJECT_ID || secrets.VITE_FB_PROJECT_ID }}
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-service-account.json
+        run: node functions/scripts/ai-assistant-pr-worker.js export
+
+      - name: Create pull request
+        if: steps.export.outputs.found == 'true'
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUEST_ID: ${{ steps.export.outputs.request_id }}
+        run: |
+          set -euo pipefail
+          short_id="$(printf '%s' "$REQUEST_ID" | cut -c1-8)"
+          branch="codex/ai-request-${short_id}"
+          title="AI 需求：${short_id}"
+          body_file="docs/ai-requests/${REQUEST_ID}-pr-body.md"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git add "docs/ai-requests/${REQUEST_ID}.md" "$body_file"
+
+          if git diff --cached --quiet; then
+            echo "No request file changes to commit."
+          else
+            git commit -m "docs: capture AI request ${short_id}"
+            git push --set-upstream origin "$branch" --force-with-lease
+          fi
+
+          pr_url="$(gh pr list --head "$branch" --json url --jq '.[0].url' 2>/dev/null || true)"
+          if [ -z "$pr_url" ]; then
+            pr_url="$(gh pr create --base main --head "$branch" --title "$title" --body-file "$body_file")"
+          fi
+
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+          echo "url=$pr_url" >> "$GITHUB_OUTPUT"
+
+      - name: Sync PR URL to Firestore
+        if: steps.export.outputs.found == 'true'
+        env:
+          FIREBASE_PROJECT_ID: ${{ secrets.PRODUCTION_FIREBASE_PROJECT_ID || secrets.VITE_FB_PROJECT_ID }}
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-service-account.json
+          ORG_ID: ${{ steps.export.outputs.org_id }}
+          PR_BRANCH: ${{ steps.pr.outputs.branch }}
+          PR_URL: ${{ steps.pr.outputs.url }}
+          REQUEST_ID: ${{ steps.export.outputs.request_id }}
+        run: node functions/scripts/ai-assistant-pr-worker.js sync

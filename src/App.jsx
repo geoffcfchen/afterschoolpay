@@ -3,6 +3,7 @@ import { onAuthStateChanged, signOut } from "firebase/auth";
 import { addDoc, collection, serverTimestamp } from "firebase/firestore/lite";
 import { Link, Route, Routes } from "react-router-dom";
 import heroImage from "./assets/afterschoolpay-hero.png";
+import AIAssistantWidget from "./components/AIAssistantWidget";
 import LoginModal from "./components/LoginModal";
 import DashboardPage from "./pages/DashboardPage";
 import EmailRegisterPage from "./pages/EmailRegisterPage";
@@ -326,146 +327,149 @@ function LandingPage() {
 
 function App() {
   return (
-    <Routes>
-      <Route path="/" element={<LandingPage />} />
-      <Route path="/dashboard" element={<DashboardPage />} />
-      <Route
-        path="/students-courses"
-        element={
-          <Suspense
-            fallback={
-              <main className="dashboard-page">
-                <div className="dashboard-loading">
-                  <span className="brand-mark dark" aria-hidden="true">
-                    AP
-                  </span>
-                  <p>正在載入學生與課程...</p>
-                </div>
-              </main>
-            }
-          >
-            <StudentsCoursesPage />
-          </Suspense>
-        }
-      />
-      <Route
-        path="/daily-ledger"
-        element={
-          <Suspense
-            fallback={
-              <main className="dashboard-page">
-                <div className="dashboard-loading">
-                  <span className="brand-mark dark" aria-hidden="true">
-                    AP
-                  </span>
-                  <p>正在載入每日收支...</p>
-                </div>
-              </main>
-            }
-          >
-            <DailyLedgerPage />
-          </Suspense>
-        }
-      />
-      <Route
-        path="/financial-summary"
-        element={
-          <Suspense
-            fallback={
-              <main className="dashboard-page">
-                <div className="dashboard-loading">
-                  <span className="brand-mark dark" aria-hidden="true">
-                    AP
-                  </span>
-                  <p>正在載入收支總覽...</p>
-                </div>
-              </main>
-            }
-          >
-            <FinancialSummaryPage />
-          </Suspense>
-        }
-      />
-      <Route
-        path="/teacher-payroll"
-        element={
-          <Suspense
-            fallback={
-              <main className="dashboard-page">
-                <div className="dashboard-loading">
-                  <span className="brand-mark dark" aria-hidden="true">
-                    AP
-                  </span>
-                  <p>正在載入老師薪資...</p>
-                </div>
-              </main>
-            }
-          >
-            <TeacherPayrollPage />
-          </Suspense>
-        }
-      />
-      <Route
-        path="/team-access"
-        element={
-          <Suspense
-            fallback={
-              <main className="dashboard-page">
-                <div className="dashboard-loading">
-                  <span className="brand-mark dark" aria-hidden="true">
-                    AP
-                  </span>
-                  <p>正在載入團隊權限...</p>
-                </div>
-              </main>
-            }
-          >
-            <TeamAccessPage />
-          </Suspense>
-        }
-      />
-      <Route
-        path="/profile-setup"
-        element={
-          <Suspense
-            fallback={
-              <main className="auth-page">
-                <div className="dashboard-loading">
-                  <span className="brand-mark dark" aria-hidden="true">
-                    AP
-                  </span>
-                  <p>正在載入帳號資料...</p>
-                </div>
-              </main>
-            }
-          >
-            <ProfileSetupPage />
-          </Suspense>
-        }
-      />
-      <Route
-        path="/organization-setup"
-        element={
-          <Suspense
-            fallback={
-              <main className="auth-page">
-                <div className="dashboard-loading">
-                  <span className="brand-mark dark" aria-hidden="true">
-                    AP
-                  </span>
-                  <p>正在載入組織設定...</p>
-                </div>
-              </main>
-            }
-          >
-            <OrganizationSetupPage />
-          </Suspense>
-        }
-      />
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/register-email" element={<EmailRegisterPage />} />
-      <Route path="*" element={<LandingPage />} />
-    </Routes>
+    <>
+      <Routes>
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/dashboard" element={<DashboardPage />} />
+        <Route
+          path="/students-courses"
+          element={
+            <Suspense
+              fallback={
+                <main className="dashboard-page">
+                  <div className="dashboard-loading">
+                    <span className="brand-mark dark" aria-hidden="true">
+                      AP
+                    </span>
+                    <p>正在載入學生與課程...</p>
+                  </div>
+                </main>
+              }
+            >
+              <StudentsCoursesPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/daily-ledger"
+          element={
+            <Suspense
+              fallback={
+                <main className="dashboard-page">
+                  <div className="dashboard-loading">
+                    <span className="brand-mark dark" aria-hidden="true">
+                      AP
+                    </span>
+                    <p>正在載入每日收支...</p>
+                  </div>
+                </main>
+              }
+            >
+              <DailyLedgerPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/financial-summary"
+          element={
+            <Suspense
+              fallback={
+                <main className="dashboard-page">
+                  <div className="dashboard-loading">
+                    <span className="brand-mark dark" aria-hidden="true">
+                      AP
+                    </span>
+                    <p>正在載入收支總覽...</p>
+                  </div>
+                </main>
+              }
+            >
+              <FinancialSummaryPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/teacher-payroll"
+          element={
+            <Suspense
+              fallback={
+                <main className="dashboard-page">
+                  <div className="dashboard-loading">
+                    <span className="brand-mark dark" aria-hidden="true">
+                      AP
+                    </span>
+                    <p>正在載入老師薪資...</p>
+                  </div>
+                </main>
+              }
+            >
+              <TeacherPayrollPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/team-access"
+          element={
+            <Suspense
+              fallback={
+                <main className="dashboard-page">
+                  <div className="dashboard-loading">
+                    <span className="brand-mark dark" aria-hidden="true">
+                      AP
+                    </span>
+                    <p>正在載入團隊權限...</p>
+                  </div>
+                </main>
+              }
+            >
+              <TeamAccessPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/profile-setup"
+          element={
+            <Suspense
+              fallback={
+                <main className="auth-page">
+                  <div className="dashboard-loading">
+                    <span className="brand-mark dark" aria-hidden="true">
+                      AP
+                    </span>
+                    <p>正在載入帳號資料...</p>
+                  </div>
+                </main>
+              }
+            >
+              <ProfileSetupPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/organization-setup"
+          element={
+            <Suspense
+              fallback={
+                <main className="auth-page">
+                  <div className="dashboard-loading">
+                    <span className="brand-mark dark" aria-hidden="true">
+                      AP
+                    </span>
+                    <p>正在載入組織設定...</p>
+                  </div>
+                </main>
+              }
+            >
+              <OrganizationSetupPage />
+            </Suspense>
+          }
+        />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register-email" element={<EmailRegisterPage />} />
+        <Route path="*" element={<LandingPage />} />
+      </Routes>
+      <AIAssistantWidget />
+    </>
   );
 }
 

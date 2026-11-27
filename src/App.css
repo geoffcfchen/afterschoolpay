@@ -2061,7 +2061,7 @@
 
 .workspace-heading {
   display: grid;
-  grid-template-columns: minmax(240px, 0.6fr) minmax(420px, 1fr) auto;
+  grid-template-columns: minmax(220px, 0.5fr) minmax(0, 1fr);
   align-items: stretch;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -2075,8 +2075,9 @@
 
 .workspace-summary-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(86px, 1fr));
+  grid-template-columns: repeat(5, minmax(118px, 1fr));
   gap: 8px;
+  min-width: 0;
 }
 
 .workspace-summary-grid article {
@@ -2097,26 +2098,29 @@
 
 .workspace-summary-grid strong {
   color: var(--ink);
-  font-size: 19px;
+  font-size: 18px;
   line-height: 1.15;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .workspace-action-row {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(82px, auto));
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
-  align-content: center;
   align-items: center;
+  justify-content: flex-end;
+  margin-top: 12px;
 }
 
 .workspace-save-note {
-  grid-column: 1 / -1;
+  flex: 1 1 100%;
   margin: 0;
   color: var(--muted);
   font-size: 12px;
   font-weight: 800;
   line-height: 1.45;
+  text-align: right;
 }
 
 .workspace-save-note.unsaved {
@@ -2932,6 +2936,18 @@
   scrollbar-gutter: stable;
 }
 
+.table-scroll-hint {
+  display: block;
+  margin: 12px 0 0;
+  border: 1px solid #d8e7e5;
+  border-radius: 8px;
+  background: #f6faf8;
+  color: var(--muted);
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
 .invoice-sheet-table,
 .fee-options-table {
   width: 100%;
@@ -2985,11 +3001,43 @@
   background: #eef8f5;
 }
 
+.invoice-sheet-table .invoice-total-column,
+.invoice-sheet-table .invoice-actions-column {
+  position: sticky;
+  background: #ffffff;
+  box-shadow: -10px 0 16px rgba(8, 24, 38, 0.08);
+}
+
+.invoice-sheet-table th.invoice-total-column,
+.invoice-sheet-table th.invoice-actions-column {
+  z-index: 5;
+  background: #eef8f5;
+}
+
+.invoice-sheet-table td.invoice-total-column,
+.invoice-sheet-table td.invoice-actions-column {
+  z-index: 3;
+}
+
+.invoice-sheet-table .invoice-total-column {
+  right: 148px;
+  width: 118px;
+  min-width: 118px;
+}
+
+.invoice-sheet-table .invoice-actions-column {
+  right: 0;
+  width: 148px;
+  min-width: 148px;
+}
+
 .invoice-sheet-table tr.active td {
   background: #fffbea;
 }
 
-.invoice-sheet-table tr.active td:first-child {
+.invoice-sheet-table tr.active td:first-child,
+.invoice-sheet-table tr.active td.invoice-total-column,
+.invoice-sheet-table tr.active td.invoice-actions-column {
   background: #fffbea;
 }
 

@@ -2875,7 +2875,7 @@ function StudentsCoursesPage() {
                   <p className="dashboard-kicker">班級表格</p>
                   <h2>收費資料</h2>
                   <p>
-                    順序對齊 Excel：編號、姓名、科目、課程日期、雜項、合計。
+                    順序對齊 Excel：編號、姓名、科目、課程日期、雜項、合計、操作。
                   </p>
                   </div>
                   <div className="table-panel-actions">
@@ -2900,6 +2900,9 @@ function StudentsCoursesPage() {
                     </button>
                   </div>
                 </div>
+                <p className="table-scroll-hint">
+                  左右滑動可查看課程明細；合計與操作會固定在右側。
+                </p>
                 <div className="invoice-sheet-wrap">
                   <table
                     className={`invoice-sheet-table ${
@@ -2976,8 +2979,8 @@ function StudentsCoursesPage() {
                           </th>
                         ))}
                         <th>雜項</th>
-                        <th>合計</th>
-                        <th>操作</th>
+                        <th className="invoice-total-column">合計</th>
+                        <th className="invoice-actions-column">操作</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -3193,10 +3196,10 @@ function StudentsCoursesPage() {
                                 ))}
                               </div>
                             </td>
-                            <td>
+                            <td className="invoice-total-column">
                               <strong>{formatCurrency(row.invoice.total)}</strong>
                             </td>
-                            <td>
+                            <td className="invoice-actions-column">
                               <div className="student-row-actions">
                                 <button
                                   className="table-action-button"
